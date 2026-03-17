@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 
 /*
  * ═══════════════════════════════════════════════════════════════════════════════
@@ -797,7 +797,11 @@ function GameCard({ m, pred, exp, onTog, onEdit }) {
           <span style={{fontSize:10,color:"#555"}}>{a.rec}</span>
           <span style={{fontSize:11,fontWeight:700,color:spreadColor(t1DkSpread),fontFamily:"'JetBrains Mono',mono",padding:"1px 5px",borderRadius:4,background:t1DkSpread<0?"#f59e0b12":"#88888808"}}>{fmtSpread(t1DkSpread)}</span>
         </div>
-        <span style={{fontSize:17,fontWeight:800,color:"#e0e0ea",fontFamily:"'JetBrains Mono',mono"}}>{pred.s1}</span>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          {m._isLive && <span style={{fontSize:8,fontWeight:800,padding:"2px 5px",borderRadius:3,background:"#dc262622",color:"#f87171",animation:"pulse 1.5s infinite"}}>LIVE</span>}
+          {m._isFinal && <span style={{fontSize:8,fontWeight:800,padding:"2px 5px",borderRadius:3,background:"#16a34a22",color:"#16a34a"}}>FINAL</span>}
+          {(m._isLive || m._isFinal) ? <span style={{fontSize:17,fontWeight:800,color:m._isFinal?"#16a34a":"#f87171",fontFamily:"'JetBrains Mono',mono"}}>{m._liveS1}</span> : <span style={{fontSize:17,fontWeight:800,color:"#e0e0ea",fontFamily:"'JetBrains Mono',mono"}}>{pred.s1}</span>}
+        </div>
       </div>
       {/* Team 2 row: seed | name | record | DK spread | projected score */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -807,8 +811,14 @@ function GameCard({ m, pred, exp, onTog, onEdit }) {
           <span style={{fontSize:10,color:"#555"}}>{b.rec}</span>
           <span style={{fontSize:11,fontWeight:700,color:spreadColor(t2DkSpread),fontFamily:"'JetBrains Mono',mono",padding:"1px 5px",borderRadius:4,background:t2DkSpread<0?"#f59e0b12":"#88888808"}}>{fmtSpread(t2DkSpread)}</span>
         </div>
-        <span style={{fontSize:17,fontWeight:800,color:"#e0e0ea",fontFamily:"'JetBrains Mono',mono"}}>{pred.s2}</span>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          {(m._isLive || m._isFinal) ? <span style={{fontSize:17,fontWeight:800,color:m._isFinal?"#16a34a":"#f87171",fontFamily:"'JetBrains Mono',mono"}}>{m._liveS2}</span> : <span style={{fontSize:17,fontWeight:800,color:"#e0e0ea",fontFamily:"'JetBrains Mono',mono"}}>{pred.s2}</span>}
+        </div>
       </div>
+      {/* Live game status */}
+      {m._liveStatus && (m._isLive || m._isFinal) && <div style={{textAlign:"center",marginTop:4}}>
+        <span style={{fontSize:9,fontWeight:700,color:m._isLive?"#f87171":"#16a34a",fontFamily:"'JetBrains Mono',mono"}}>{m._liveStatus}</span>
+      </div>}
       {/* Model predicted margin + win probability + total */}
       <div style={{marginTop:8,padding:"6px 8px",borderRadius:6,background:"#0d0d14"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
@@ -1413,6 +1423,78 @@ function ResultsTab({ year, results2026, onAddResult }) {
   </div>;
 }
 
+// ─── ESPN LIVE DATA FETCHER ─────────────────────────────────────────────────
+// Fetches live/final scores and current odds from ESPN's public API
+const ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball";
+
+// Team name normalization: ESPN uses full names, our data uses abbreviations
+const TEAM_ALIAS = {
+  "Michigan State Spartans":"Michigan State","North Carolina Tar Heels":"North Carolina",
+  "Ohio State Buckeyes":"Ohio State","Iowa State Cyclones":"Iowa State",
+  "NC State Wolfpack":"NC State","Texas A&M Aggies":"Texas A&M",
+  "Virginia Tech Hokies":"Virginia Tech","Saint Mary's Gaels":"Saint Mary's",
+  "North Dakota State Bison":"N. Dakota State","Tennessee State Tigers":"Tennessee State",
+  "Northern Iowa Panthers":"Northern Iowa","Santa Clara Broncos":"Santa Clara",
+  "Wright State Raiders":"Wright State","Cal Baptist Lancers":"Cal Baptist",
+  "South Florida Bulls":"South Florida","Miami (OH) RedHawks":"Miami (OH)",
+  "Prairie View A&M Panthers":"Prairie View A&M","Kennesaw State Owls":"Kennesaw State",
+  "Saint Louis Billikens":"Saint Louis","St. John's Red Storm":"St. John's",
+  "Long Island Sharks":"Long Island","High Point Panthers":"High Point",
+  "Utah State Aggies":"Utah State","Miami Hurricanes":"Miami (FL)",
+};
+const normName = (n) => TEAM_ALIAS[n] || n.replace(/ (Bulldogs|Cardinals|Wildcats|Wolverines|Gators|Cougars|Panthers|Bears|Hawks|Tigers|Hoosiers|Badgers|Cornhuskers|Trojans|Cowboys|Bison|Commodores|Owls|Billikens|Mountaineers|Zips|Saints|Broncos|Gaels|Aggies|Paladins|Monarchs|Vandals|Warriors|Antelopes|Retrievers|Raiders|Lancers|Musketeers|RedHawks|Mustangs|Mountain Hawks|Quakers|Rainbow Warriors|Chanticleers|Hawkeyes|Boilermakers|Fighting Illini|Blue Devils|Huskies|Red Storm|Jayhawks|Knights|Bruins|Crimson Tide|Cavaliers|Horned Frogs|Longhorns|Red Raiders|Seminoles|Volunteers|Demon Deacons|Wolfpack|Peacocks|Royals|Flames|Rams|Eagles)$/i, '').trim();
+
+async function fetchESPNScores() {
+  try {
+    // Fetch NCAA tournament scoreboard
+    const res = await fetch(`${ESPN_BASE}/scoreboard?dates=20260317-20260407&groups=100&limit=100`);
+    if (!res.ok) return { scores: [], odds: [], error: "ESPN API returned " + res.status };
+    const data = await res.json();
+    const events = data.events || [];
+    
+    const results = [];
+    for (const ev of events) {
+      const comp = ev.competitions?.[0];
+      if (!comp) continue;
+      
+      const teams = comp.competitors || [];
+      if (teams.length < 2) continue;
+      
+      // Get team names and scores
+      const home = teams.find(t => t.homeAway === "home") || teams[0];
+      const away = teams.find(t => t.homeAway === "away") || teams[1];
+      
+      const homeName = normName(home.team?.displayName || "");
+      const awayName = normName(away.team?.displayName || "");
+      const homeScore = parseInt(home.score || "0");
+      const awayScore = parseInt(away.score || "0");
+      
+      const status = comp.status?.type?.name || "STATUS_SCHEDULED";
+      const isLive = status === "STATUS_IN_PROGRESS";
+      const isFinal = status === "STATUS_FINAL";
+      const statusText = comp.status?.type?.shortDetail || "";
+      
+      // Get odds if available
+      let spread = null, total = null;
+      const oddsArr = comp.odds || [];
+      if (oddsArr.length > 0) {
+        const o = oddsArr[0]; // DraftKings is usually first
+        spread = o.spread;
+        total = o.overUnder;
+      }
+      
+      results.push({
+        homeName, awayName, homeScore, awayScore,
+        status, isLive, isFinal, statusText,
+        spread, total,
+      });
+    }
+    return { scores: results, error: null };
+  } catch (e) {
+    return { scores: [], error: e.message };
+  }
+}
+
 export default function App() {
   const [tab, setTab] = useState("predictions"); // "predictions" | "results"
   const [reg, setReg] = useState("All");
@@ -1425,6 +1507,84 @@ export default function App() {
   const [editing, setEditing] = useState(null);
   const [btYear, setBtYear] = useState(2025); // backtest year selector
   const [results2026, setResults2026] = useState({}); // {gameIndex: {s1: score1, s2: score2}}
+  const [liveStatus, setLiveStatus] = useState("idle"); // "idle" | "loading" | "success" | "error"
+  const [lastRefresh, setLastRefresh] = useState(null);
+  const [liveError, setLiveError] = useState(null);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+
+  // Match ESPN data to our games by team names
+  const applyLiveData = useCallback(async () => {
+    setLiveStatus("loading");
+    const { scores, error } = await fetchESPNScores();
+    if (error) {
+      setLiveStatus("error");
+      setLiveError(error);
+      return;
+    }
+    
+    let updatedLines = 0;
+    let updatedScores = 0;
+    
+    setLines(prev => prev.map((m, idx) => {
+      // Find matching ESPN game
+      const match = scores.find(s => 
+        (s.homeName === m.t1 && s.awayName === m.t2) ||
+        (s.homeName === m.t2 && s.awayName === m.t1) ||
+        (m.t1.includes(s.homeName) || s.homeName.includes(m.t1)) &&
+        (m.t2.includes(s.awayName) || s.awayName.includes(m.t2))
+      );
+      if (!match) return m;
+      
+      const updated = { ...m };
+      
+      // Update odds if available and different
+      if (match.spread !== null && match.spread !== undefined) {
+        // ESPN spread is from home team perspective
+        const isT1Home = match.homeName === m.t1 || m.t1.includes(match.homeName);
+        const newSpread = isT1Home ? match.spread : -match.spread;
+        if (newSpread !== m.vs) {
+          updated.vs = newSpread;
+          updatedLines++;
+        }
+      }
+      if (match.total !== null && match.total !== undefined && match.total !== m.vt) {
+        updated.vt = match.total;
+        updatedLines++;
+      }
+      
+      // Update scores if game is live or final
+      if ((match.isLive || match.isFinal) && (match.homeScore > 0 || match.awayScore > 0)) {
+        const isT1Home = match.homeName === m.t1 || m.t1.includes(match.homeName);
+        const s1 = isT1Home ? match.homeScore : match.awayScore;
+        const s2 = isT1Home ? match.awayScore : match.homeScore;
+        updated._liveS1 = s1;
+        updated._liveS2 = s2;
+        updated._liveStatus = match.statusText;
+        updated._isFinal = match.isFinal;
+        updated._isLive = match.isLive;
+        
+        // Auto-add to results if final
+        if (match.isFinal) {
+          setResults2026(prev => ({ ...prev, [idx]: { s1, s2 } }));
+          updatedScores++;
+        }
+      }
+      
+      return updated;
+    }));
+    
+    setLiveStatus("success");
+    setLastRefresh(new Date());
+    setLiveError(`Updated ${updatedLines} lines, ${updatedScores} final scores`);
+    setTimeout(() => setLiveStatus("idle"), 3000);
+  }, []);
+
+  // Auto-refresh every 60 seconds when enabled
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const interval = setInterval(applyLiveData, 60000);
+    return () => clearInterval(interval);
+  }, [autoRefresh, applyLiveData]);
 
   // Update a single game's spread or total
   const updateLine = (idx, field, val) => {
@@ -1462,11 +1622,31 @@ export default function App() {
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 12 }}>
           {SRC_TAGS.map(s => <span key={s} style={{ fontSize: 9, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: "#1a1a28", color: "#888", letterSpacing: ".03em" }}>{s}</span>)}
         </div>
-        <div style={{ display: "flex", gap: 24 }}>
+        <div style={{ display: "flex", gap: 24, alignItems: "flex-end" }}>
           {[["Games", games.length], ["Value Bets", valCount, "#16a34a"], ["Avg Conf", avgC + "%", "#ca8a04"]].map(([l, v, c], i) =>
             <div key={i}><div style={{ fontSize: 20, fontWeight: 800, color: c || "#e0e0ea", fontFamily: "'JetBrains Mono',mono" }}>{v}</div>
               <div style={{ fontSize: 9, color: "#555", fontWeight: 600, letterSpacing: ".06em" }}>{l}</div></div>
           )}
+          <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+            <button onClick={applyLiveData} disabled={liveStatus === "loading"} style={{
+              padding: "6px 12px", borderRadius: 6, border: "1px solid #d9770644",
+              background: liveStatus === "loading" ? "#d9770622" : liveStatus === "success" ? "#16a34a22" : "#d9770611",
+              color: liveStatus === "success" ? "#16a34a" : "#d97706",
+              fontSize: 10, fontWeight: 700, cursor: liveStatus === "loading" ? "wait" : "pointer",
+              fontFamily: "'JetBrains Mono',mono", letterSpacing: ".03em", transition: "all .2s",
+            }}>
+              {liveStatus === "loading" ? "⏳ Fetching..." : liveStatus === "success" ? "✅ Updated" : "🔄 Refresh Lines & Scores"}
+            </button>
+            <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+              <input type="checkbox" checked={autoRefresh} onChange={e => { setAutoRefresh(e.target.checked); if (e.target.checked) applyLiveData(); }}
+                style={{ accentColor: "#d97706" }} />
+              <span style={{ fontSize: 9, color: autoRefresh ? "#d97706" : "#555", fontWeight: 600 }}>Auto 60s</span>
+            </label>
+          </div>
+        </div>
+        {lastRefresh && <div style={{ fontSize: 9, color: "#444", marginTop: 6, fontFamily: "'JetBrains Mono',mono" }}>
+          Last refresh: {lastRefresh.toLocaleTimeString()} {liveError && <span style={{ color: liveStatus === "error" ? "#dc2626" : "#16a34a" }}>— {liveError}</span>}
+        </div>}
         </div>
         <div style={{ marginTop: 8, fontSize: 10, color: "#555", fontFamily: "'JetBrains Mono',mono" }}>
           DK Lines as of: <span style={{ color: "#d97706" }}>{LINES_UPDATED}</span> — Click any DK spread/total to edit
