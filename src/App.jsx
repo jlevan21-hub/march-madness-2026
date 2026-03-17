@@ -1647,7 +1647,6 @@ export default function App() {
         {lastRefresh && <div style={{ fontSize: 9, color: "#444", marginTop: 6, fontFamily: "'JetBrains Mono',mono" }}>
           Last refresh: {lastRefresh.toLocaleTimeString()} {liveError && <span style={{ color: liveStatus === "error" ? "#dc2626" : "#16a34a" }}>— {liveError}</span>}
         </div>}
-        </div>
         <div style={{ marginTop: 8, fontSize: 10, color: "#555", fontFamily: "'JetBrains Mono',mono" }}>
           DK Lines as of: <span style={{ color: "#d97706" }}>{LINES_UPDATED}</span> — Click any DK spread/total to edit
         </div>
