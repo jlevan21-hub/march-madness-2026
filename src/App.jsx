@@ -1835,7 +1835,18 @@ export default function App() {
     else if (sort === "confidence") g.sort((a, b) => Math.max(b.p.spreadConf, b.p.totalConf) - Math.max(a.p.spreadConf, a.p.totalConf));
     else if (sort === "time") {
       const dayOrd = { Tue: 0, Wed: 1, Thu: 2, Fri: 3 };
-      const parseTime = (t) => { const [h, rest] = (t || "12:00 ET").split(":"); const m = parseInt(rest); let hr = parseInt(h); if (hr < 6) hr += 12; return hr * 60 + m; };
+      // All tournament games are PM ET (12:15 PM through 10:15 PM)
+      // Times stored as "H:MM ET" or "HH:MM ET" — all are PM
+      // 12:XX = 12:XX (noon), 1:XX-10:XX = add 12 to get 13:XX-22:XX
+      const parseTime = (t) => {
+        if (!t) return 0;
+        const parts = t.replace(" ET", "").split(":");
+        let hr = parseInt(parts[0]);
+        const min = parseInt(parts[1]) || 0;
+        // Hours 1-10 are PM (add 12), hour 12 stays as 12 (noon)
+        if (hr >= 1 && hr <= 10) hr += 12;
+        return hr * 60 + min;
+      };
       g.sort((a, b) => ((dayOrd[a.day]||0)*10000 + parseTime(a.time)) - ((dayOrd[b.day]||0)*10000 + parseTime(b.time)));
     }
     else g.sort((a, b) => Math.abs(a.vs) - Math.abs(b.vs));
