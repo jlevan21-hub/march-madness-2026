@@ -1283,7 +1283,7 @@ function ResultsTab({ year, results2026, onAddResult }) {
           <div><div style={{ fontSize: 18, fontWeight: 800, color: "#16a34a", fontFamily: mono }}>{completed2026.filter(g => Math.abs((g.actual_s1-g.actual_s2) - (-g.p?.modelSpread||0)) <= (ML.conformal_spread[0.80]||17)).length}</div><div style={{ fontSize: 9, color: "#555" }}>WITHIN 80% CI</div></div>
         </div>}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(360px,1fr))", gap: 8 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
         {liveGames.map(g => <div key={g.i} style={{ padding: "10px 12px", background: "#111118", borderRadius: 8, border: `1px solid ${g.completed ? "#16a34a33" : "#222230"}` }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#e0e0ea" }}>{g.t1} vs {g.t2}</div>
@@ -1612,7 +1612,7 @@ export default function App() {
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     {/* Header */}
     <div style={{ padding: "28px 20px 20px", background: "linear-gradient(180deg,#111118,#08080e)", borderBottom: "1px solid var(--bd)" }}>
-      <div style={{ maxWidth: 880, margin: "0 auto" }}>
+      <div style={{ maxWidth: 1200, margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
           <span style={{ fontSize: 24 }}>🏀</span>
           <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".12em", color: "#d97706", fontFamily: "'JetBrains Mono',mono" }}>MARCH MADNESS 2026 • v4.0</span>
@@ -1663,7 +1663,7 @@ export default function App() {
         </div>
       </div>
     </div>
-    <div style={{ maxWidth: 880, margin: "0 auto", padding: "0 20px" }}>
+    <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 20px" }}>
       {/* ═══ RESULTS TAB ═══ */}
       {tab === "results" && <div style={{ paddingTop: 14 }}>
         <div style={{ display: "flex", gap: 4, marginBottom: 14, padding: 3, background: "#0d0d14", borderRadius: 8, border: "1px solid #222230", width: "fit-content" }}>
@@ -1736,7 +1736,7 @@ export default function App() {
       })()}
 
       {/* Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(380px,1fr))", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
         {games.map(g => <GameCard key={g.i} m={g} pred={g.p} exp={exp === g.i} onTog={() => setExp(exp === g.i ? null : g.i)} onEdit={() => { setEditing(g.i); setExp(null); }} />)}
       </div>
       {games.length === 0 && <div style={{ textAlign: "center", padding: 50, color: "#555" }}>
