@@ -676,7 +676,7 @@ function predict(m) {
   const dkGapTotal = Math.abs(modelTotal - m.vt);
   const absDK = Math.abs(m.vs);
 
-  // Conformal coverage level (unchanged — still useful for display)
+  // Conformal coverage level (still useful for display)
   const confCov = (gap, conf) => {
     const levels = [0.50, 0.60, 0.70, 0.80, 0.90, 0.95];
     for (let i = 0; i < levels.length; i++) { if (gap <= conf[levels[i]]) return levels[i]; }
@@ -694,33 +694,65 @@ function predict(m) {
     totalWidth += ML.widthTotal.c[f] * z;
   }
 
-  // Component 1: TOSS-UP SPECIALIST (backtest: model is closest to DK on close games)
-  // Close games (DK < 8): model has genuine edge → boost confidence
-  // Big spreads (DK > 20): DK is much more accurate → reduce confidence
-  const tossupBonus = absDK < 5 ? 20 : absDK < 8 ? 12 : absDK < 12 ? 5 : absDK < 20 ? -5 : -15;
+  // ── VALUE CALCULATIONS ──
+  const spreadVal = Math.round((modelSpread - m.vs) * 10) / 10;
+  const totalVal = Math.round((modelTotal - m.vt) * 10) / 10;
 
-  // Component 2: AGREEMENT SIGNAL (when model and DK converge on close games)
-  // Small gap on toss-ups = high confidence. Small gap on blowouts = less meaningful.
-  const agreementBonus = dkGapSpread < 2 ? 10 : dkGapSpread < 4 ? 5 : dkGapSpread < 8 ? 0 : -5;
+  // ── MONTE CARLO SIMULATION (10,000 games) ───────────────────────────────
+  // Moved BEFORE confidence so MC cover probability can drive confidence score
+  const spreadStd = ML.conformal_spread[0.80] / 1.28; // ≈ 13.1 pts
+  const totalStd = ML.conformal_total[0.80] / 1.28;   // ≈ 18.9 pts
+  const N_SIM = 10000;
 
-  // Component 3: BIG DISAGREEMENT PENALTY (model was wrong 8/15 times on biggest disagreements)
-  // When model disagrees with DK by a lot, it's usually wrong on blowouts
-  const disagPenalty = (dkGapSpread > 15 && absDK > 15) ? -20 : (dkGapSpread > 10 && absDK > 12) ? -10 : 0;
+  let seed = 0;
+  for (let i = 0; i < m.t1.length; i++) seed += m.t1.charCodeAt(i) * 31;
+  for (let i = 0; i < m.t2.length; i++) seed += m.t2.charCodeAt(i) * 17;
+  const rng = () => { seed = (seed * 1664525 + 1013904223) & 0xFFFFFFFF; return (seed >>> 0) / 4294967296; };
+  const randn = () => { const u1 = rng(), u2 = rng(); return Math.sqrt(-2*Math.log(u1||0.0001))*Math.cos(2*Math.PI*u2); };
 
-  // Component 4: Injury uncertainty
-  const injPenalty = (a.injNote === "" && b.injNote === "") ? 0 : -8;
+  let t1Wins = 0, t1Covers = 0, overHits = 0;
+  const simMargins = [];
+  const simTotals = [];
+  for (let i = 0; i < N_SIM; i++) {
+    const simMargin = -modelSpread + randn() * spreadStd;
+    const simTotal = modelTotal + randn() * totalStd;
+    simMargins.push(simMargin);
+    simTotals.push(simTotal);
+    if (simMargin > 0) t1Wins++;
+    if (simMargin + m.vs > 0) t1Covers++;
+    if (simTotal > m.vt) overHits++;
+  }
+  const winProb1 = Math.round(t1Wins / N_SIM * 100);
+  const winProb2 = 100 - winProb1;
+  const coverProb1 = Math.round(t1Covers / N_SIM * 100);
+  const coverProb2 = 100 - coverProb1;
+  const overProb = Math.round(overHits / N_SIM * 100);
+  const underProb = 100 - overProb;
 
-  // Component 5: Deep feature confidence — strong signals from ESPN data
-  const hasDeepA = DEEP[m.t1] && DEEP[m.t1].em_trajectory !== undefined;
-  const hasDeepB = DEEP[m.t2] && DEEP[m.t2].em_trajectory !== undefined;
-  const deepBonus = (hasDeepA && hasDeepB) ? 5 : 0;
+  simMargins.sort((a, b) => a - b);
+  const simP10 = Math.round(simMargins[Math.floor(N_SIM * 0.10)] * 10) / 10;
+  const simP90 = Math.round(simMargins[Math.floor(N_SIM * 0.90)] * 10) / 10;
 
-  // Final spread confidence (base 45, range 20-88)
-  let spreadConf = Math.round(Math.min(88, Math.max(20, 45 + tossupBonus + agreementBonus + disagPenalty + injPenalty + deepBonus)));
+  // ── CONFIDENCE (MC-driven) ──────────────────────────────────────────────
+  // Previous hand-tuned confidence was not calibrated (backtest showed no
+  // correlation between confidence tier and ATS accuracy).
+  // New approach: use Monte Carlo cover probability directly as confidence.
+  // MC cover prob IS a calibrated probability — it accounts for model spread,
+  // DK spread, and spread variance through 10K simulations.
+  // The further MC is from 50%, the more confident the pick.
+  //
+  // Spread confidence = how far MC cover probability is from 50%
+  // scaled to 20-88 range for display consistency
+  const mcCoverLean = Math.max(coverProb1, coverProb2); // stronger side
+  let spreadConf = Math.round(Math.min(88, Math.max(20, mcCoverLean)));
 
-  // Total confidence (simpler — mainly agreement-based)
-  const totalAgree = dkGapTotal < 3 ? 10 : dkGapTotal < 6 ? 5 : dkGapTotal < 10 ? 0 : -8;
-  let totalConf = Math.round(Math.min(85, Math.max(20, 45 + totalAgree + injPenalty + deepBonus)));
+  // Small injury penalty (MC can't account for injuries)
+  const injPenalty = (a.injNote === "" && b.injNote === "") ? 0 : -5;
+  spreadConf = Math.round(Math.min(88, Math.max(20, spreadConf + injPenalty)));
+
+  // Total confidence: MC over/under probability
+  const mcOULean = Math.max(overProb, underProb);
+  let totalConf = Math.round(Math.min(85, Math.max(20, mcOULean + injPenalty)));
 
   // ── UPSET ALERT (backed by deep features) ──────────────────────────────
   // Triggered when: model spread flips direction from DK AND deep features support it
@@ -759,53 +791,6 @@ function predict(m) {
       spreadConf = Math.min(88, spreadConf + 8);
     }
   }
-
-  // ── VALUE CALCULATIONS (needed by Monte Carlo consensus below) ──
-  const spreadVal = Math.round((modelSpread - m.vs) * 10) / 10;
-  const totalVal = Math.round((modelTotal - m.vt) * 10) / 10;
-
-  // ── MONTE CARLO SIMULATION (10,000 games) ───────────────────────────────
-  // Instead of a single point estimate, simulate the game 10K times using:
-  //   - Model spread as the mean margin
-  //   - Conformal 80% interval (±16.8 pts) to derive std dev
-  //   - σ ≈ conformal_80 / 1.28 (since 80% CI ≈ ±1.28σ for normal)
-  // This gives us: win probability, cover probability, over/under probability
-  const spreadStd = ML.conformal_spread[0.80] / 1.28; // ≈ 13.1 pts
-  const totalStd = ML.conformal_total[0.80] / 1.28;   // ≈ 18.9 pts
-  const N_SIM = 10000; // 10K sims for robust probabilities
-
-  // Seed a simple PRNG for reproducibility (based on team names)
-  let seed = 0;
-  for (let i = 0; i < m.t1.length; i++) seed += m.t1.charCodeAt(i) * 31;
-  for (let i = 0; i < m.t2.length; i++) seed += m.t2.charCodeAt(i) * 17;
-  const rng = () => { seed = (seed * 1664525 + 1013904223) & 0xFFFFFFFF; return (seed >>> 0) / 4294967296; };
-  // Box-Muller for normal distribution
-  const randn = () => { const u1 = rng(), u2 = rng(); return Math.sqrt(-2*Math.log(u1||0.0001))*Math.cos(2*Math.PI*u2); };
-
-  let t1Wins = 0, t1Covers = 0, overHits = 0;
-  const simMargins = [];
-  const simTotals = [];
-  for (let i = 0; i < N_SIM; i++) {
-    const simMargin = -modelSpread + randn() * spreadStd; // positive = t1 wins
-    const simTotal = modelTotal + randn() * totalStd;
-    simMargins.push(simMargin);
-    simTotals.push(simTotal);
-    if (simMargin > 0) t1Wins++;
-    // Cover: does t1 beat the DK spread? t1 score - t2 score + dk_spread > 0
-    if (simMargin + m.vs > 0) t1Covers++;
-    if (simTotal > m.vt) overHits++;
-  }
-  const winProb1 = Math.round(t1Wins / N_SIM * 100);
-  const winProb2 = 100 - winProb1;
-  const coverProb1 = Math.round(t1Covers / N_SIM * 100); // t1 covers DK spread
-  const coverProb2 = 100 - coverProb1;
-  const overProb = Math.round(overHits / N_SIM * 100);
-  const underProb = 100 - overProb;
-
-  // Median and percentiles from simulation
-  simMargins.sort((a, b) => a - b);
-  const simP10 = Math.round(simMargins[Math.floor(N_SIM * 0.10)] * 10) / 10;
-  const simP90 = Math.round(simMargins[Math.floor(N_SIM * 0.90)] * 10) / 10;
 
   // ── ENSEMBLE CONSENSUS (informational — separate from model) ──────────
   // Cross-reference multiple signals. Each "vote" is ATS lean direction.
@@ -1441,31 +1426,111 @@ function ResultsTab({ year, results2026, onAddResult }) {
 
   if (is2026) {
     const completed2026 = liveGames.filter(g => g.completed);
+    
+    // ── ATS tracking ──
+    const atsResults = completed2026.map(g => {
+      const actualMargin = g.actual_s1 - g.actual_s2;
+      const modelFavT1 = g.p?.modelSpread < 0;
+      const dkFavT1 = g.vs < 0;
+      // Model leans t1 ATS when model has t1 more favored than DK
+      const modelLeansT1 = g.p?.modelSpread < g.vs;
+      const t1Covers = (actualMargin + g.vs) > 0;
+      const push = Math.abs(actualMargin + g.vs) < 0.01;
+      const modelCorrect = push ? null : modelLeansT1 === t1Covers;
+      const spreadEdge = modelLeansT1 ? (actualMargin + g.vs) : -(actualMargin + g.vs);
+      return { ...g, actualMargin, modelLeansT1, t1Covers, push, modelCorrect, spreadEdge };
+    });
+    const atsNonPush = atsResults.filter(g => g.modelCorrect !== null);
+    const atsWins = atsNonPush.filter(g => g.modelCorrect === true).length;
+    const atsLosses = atsNonPush.filter(g => g.modelCorrect === false).length;
+    
+    // ── O/U tracking ──
+    const ouResults = completed2026.map(g => {
+      const actualTotal = g.actual_s1 + g.actual_s2;
+      const modelTotal = g.p?.modelTotal || 0;
+      const dkTotal = g.vt;
+      const modelLean = modelTotal > dkTotal + 1.5 ? "OVER" : modelTotal < dkTotal - 1.5 ? "UNDER" : null;
+      const actualResult = actualTotal > dkTotal ? "OVER" : actualTotal < dkTotal ? "UNDER" : "PUSH";
+      const ouCorrect = modelLean === null ? null : (actualResult === "PUSH" ? null : modelLean === actualResult);
+      const ouEdge = modelLean === null ? 0 : (ouCorrect ? Math.abs(actualTotal - dkTotal) : -Math.abs(actualTotal - dkTotal));
+      return { ...g, actualTotal, modelTotal, dkTotal, modelLean, actualResult, ouCorrect, ouEdge };
+    });
+    const ouPicks = ouResults.filter(g => g.ouCorrect !== null);
+    const ouWins = ouPicks.filter(g => g.ouCorrect === true).length;
+    const ouLosses = ouPicks.filter(g => g.ouCorrect === false).length;
+    
     return <div>
       <div style={{ padding: "12px", background: "#111118", borderRadius: 8, border: "1px solid #222230", marginBottom: 14 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: "#d97706", marginBottom: 8 }}>📊 2026 LIVE RESULTS — Enter scores as games complete</div>
-        <p style={{ fontSize: 10, color: "#666", margin: "0 0 12px" }}>Click "Add Score" on any game below to enter the final score. The model will compare its prediction to the actual result.</p>
-        {completed2026.length > 0 && <div style={{ display: "flex", gap: 16, marginBottom: 8 }}>
-          <div><div style={{ fontSize: 18, fontWeight: 800, color: "#e0e0ea", fontFamily: mono }}>{completed2026.length}</div><div style={{ fontSize: 9, color: "#555" }}>COMPLETED</div></div>
-          <div><div style={{ fontSize: 18, fontWeight: 800, color: "#16a34a", fontFamily: mono }}>{completed2026.filter(g => Math.abs((g.actual_s1-g.actual_s2) - (-g.p?.modelSpread||0)) <= (ML.conformal_spread[0.80]||17)).length}</div><div style={{ fontSize: 9, color: "#555" }}>WITHIN 80% CI</div></div>
-        </div>}
+        <p style={{ fontSize: 10, color: "#666", margin: "0 0 12px" }}>Click "Add Score" on any game below to enter the final score. The model tracks ATS spread picks AND O/U total picks.</p>
+        {completed2026.length > 0 && <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 8, marginBottom: 8 }}>
+            <div style={{ padding: "8px", background: "#0d0d14", borderRadius: 7, textAlign: "center" }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#e0e0ea", fontFamily: mono }}>{completed2026.length}</div>
+              <div style={{ fontSize: 9, color: "#555" }}>COMPLETED</div>
+            </div>
+            <div style={{ padding: "8px", background: "#0d0d14", borderRadius: 7, textAlign: "center" }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: atsWins > atsLosses ? "#16a34a" : atsWins < atsLosses ? "#dc2626" : "#d97706", fontFamily: mono }}>{atsWins}-{atsLosses}</div>
+              <div style={{ fontSize: 9, color: "#555" }}>ATS RECORD</div>
+            </div>
+            <div style={{ padding: "8px", background: "#0d0d14", borderRadius: 7, textAlign: "center" }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: atsNonPush.length > 0 ? (atsWins/atsNonPush.length > 0.524 ? "#16a34a" : "#dc2626") : "#888", fontFamily: mono }}>{atsNonPush.length > 0 ? Math.round(atsWins/atsNonPush.length*100) : "—"}%</div>
+              <div style={{ fontSize: 9, color: "#555" }}>ATS %</div>
+            </div>
+            <div style={{ padding: "8px", background: "#0d0d14", borderRadius: 7, textAlign: "center" }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: ouWins > ouLosses ? "#16a34a" : ouWins < ouLosses ? "#dc2626" : "#d97706", fontFamily: mono }}>{ouWins}-{ouLosses}</div>
+              <div style={{ fontSize: 9, color: "#555" }}>O/U RECORD</div>
+            </div>
+            <div style={{ padding: "8px", background: "#0d0d14", borderRadius: 7, textAlign: "center" }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: ouPicks.length > 0 ? (ouWins/ouPicks.length > 0.524 ? "#16a34a" : "#dc2626") : "#888", fontFamily: mono }}>{ouPicks.length > 0 ? Math.round(ouWins/ouPicks.length*100) : "—"}%</div>
+              <div style={{ fontSize: 9, color: "#555" }}>O/U %</div>
+            </div>
+            <div style={{ padding: "8px", background: "#0d0d14", borderRadius: 7, textAlign: "center" }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#16a34a", fontFamily: mono }}>{completed2026.filter(g => Math.abs((g.actual_s1-g.actual_s2) - (-g.p?.modelSpread||0)) <= (ML.conformal_spread[0.80]||17)).length}</div>
+              <div style={{ fontSize: 9, color: "#555" }}>WITHIN 80% CI</div>
+            </div>
+          </div>
+          {/* Signed edge summary */}
+          {atsNonPush.length > 0 && <div style={{ display: "flex", gap: 16, marginTop: 4, fontSize: 10, color: "#888" }}>
+            <span>ATS Signed Edge: <b style={{ color: atsResults.reduce((s,g) => s + g.spreadEdge, 0) / Math.max(1, atsNonPush.length) > 0 ? "#16a34a" : "#dc2626", fontFamily: mono }}>{(atsResults.reduce((s,g) => s + g.spreadEdge, 0) / Math.max(1, atsNonPush.length)).toFixed(1)} pts/pick</b></span>
+            {ouPicks.length > 0 && <span>O/U Signed Edge: <b style={{ color: ouPicks.reduce((s,g) => s + g.ouEdge, 0) / ouPicks.length > 0 ? "#16a34a" : "#dc2626", fontFamily: mono }}>{(ouPicks.reduce((s,g) => s + g.ouEdge, 0) / ouPicks.length).toFixed(1)} pts/pick</b></span>}
+          </div>}
+        </>}
       </div>
+      {/* Game-by-game cards */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
-        {liveGames.map(g => <div key={g.i} style={{ padding: "10px 12px", background: "#111118", borderRadius: 8, border: `1px solid ${g.completed ? "#16a34a33" : "#222230"}` }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#e0e0ea" }}>{g.t1} vs {g.t2}</div>
-            {!g.completed && <button onClick={() => {
-              const s1 = prompt(`Final score for ${g.t1}:`);
-              const s2 = prompt(`Final score for ${g.t2}:`);
-              if (s1 && s2 && !isNaN(+s1) && !isNaN(+s2)) onAddResult(g.i, +s1, +s2);
-            }} style={{ padding: "3px 8px", borderRadius: 5, border: "1px solid #d9770644", background: "#d9770614", color: "#d97706", fontSize: 9, fontWeight: 700, cursor: "pointer" }}>Add Score</button>}
-          </div>
-          <div style={{ display: "flex", gap: 16, marginTop: 6, fontSize: 10, color: "#888" }}>
-            <span>Model: <b style={{ color: "#a78bfa", fontFamily: mono }}>{g.p?.modelSpread > 0 ? g.t2 : g.t1} by {Math.abs(g.p?.modelSpread||0).toFixed(1)}</b></span>
-            <span>DK: <b style={{ fontFamily: mono }}>{g.vs}</b></span>
-            {g.completed && <span>Actual: <b style={{ color: "#16a34a", fontFamily: mono }}>{g.actual_s1}-{g.actual_s2}</b></span>}
-          </div>
-        </div>)}
+        {liveGames.map((g, idx) => {
+          const ats = atsResults.find(r => r.i === g.i);
+          const ou = ouResults.find(r => r.i === g.i);
+          return <div key={g.i} style={{ padding: "10px 12px", background: "#111118", borderRadius: 8, border: `1px solid ${g.completed ? (ats?.modelCorrect ? "#16a34a33" : ats?.modelCorrect === false ? "#dc262633" : "#d9770633") : "#222230"}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#e0e0ea" }}>{g.t1} vs {g.t2}</div>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                {g.completed && ats && <span style={{ fontSize: 8, fontWeight: 800, padding: "2px 6px", borderRadius: 3, background: ats.modelCorrect ? "#16a34a18" : ats.modelCorrect === false ? "#dc262618" : "#d9770618", color: ats.modelCorrect ? "#16a34a" : ats.modelCorrect === false ? "#dc2626" : "#d97706" }}>{ats.modelCorrect ? "ATS ✓" : ats.modelCorrect === false ? "ATS ✗" : "PUSH"}</span>}
+                {g.completed && ou && ou.modelLean && <span style={{ fontSize: 8, fontWeight: 800, padding: "2px 6px", borderRadius: 3, background: ou.ouCorrect ? "#16a34a18" : ou.ouCorrect === false ? "#dc262618" : "#d9770618", color: ou.ouCorrect ? "#16a34a" : ou.ouCorrect === false ? "#dc2626" : "#d97706" }}>{ou.ouCorrect ? "O/U ✓" : ou.ouCorrect === false ? "O/U ✗" : "O/U —"}</span>}
+                {!g.completed && <button onClick={() => {
+                  const s1 = prompt(`Final score for ${g.t1}:`);
+                  const s2 = prompt(`Final score for ${g.t2}:`);
+                  if (s1 && s2 && !isNaN(+s1) && !isNaN(+s2)) onAddResult(g.i, +s1, +s2);
+                }} style={{ padding: "3px 8px", borderRadius: 5, border: "1px solid #d9770644", background: "#d9770614", color: "#d97706", fontSize: 9, fontWeight: 700, cursor: "pointer" }}>Add Score</button>}
+              </div>
+            </div>
+            {/* Spread row */}
+            <div style={{ display: "flex", gap: 16, marginTop: 6, fontSize: 10, color: "#888", flexWrap: "wrap" }}>
+              <span>Spread: <b style={{ color: "#a78bfa", fontFamily: mono }}>{g.p?.modelSpread > 0 ? g.t2 : g.t1} by {Math.abs(g.p?.modelSpread||0).toFixed(1)}</b></span>
+              <span>DK: <b style={{ fontFamily: mono }}>{g.vs}</b></span>
+              <span>Lean: <b style={{ color: "#d97706", fontFamily: mono }}>{g.p?.spreadLeanTeam || "—"}</b></span>
+              {g.completed && <span>Actual: <b style={{ color: "#16a34a", fontFamily: mono }}>{g.actual_s1}-{g.actual_s2}</b> ({ats ? (ats.spreadEdge > 0 ? "+" : "") + ats.spreadEdge.toFixed(1) : ""})</span>}
+            </div>
+            {/* Total row */}
+            <div style={{ display: "flex", gap: 16, marginTop: 4, fontSize: 10, color: "#888", flexWrap: "wrap" }}>
+              <span>Model Total: <b style={{ color: "#60a5fa", fontFamily: mono }}>{g.p?.modelTotal || "—"}</b></span>
+              <span>DK O/U: <b style={{ fontFamily: mono }}>{g.vt}</b></span>
+              <span>Lean: <b style={{ color: ou?.modelLean ? "#d97706" : "#555", fontFamily: mono }}>{ou?.modelLean || "—"}{ou?.modelLean ? ` (${Math.abs((g.p?.modelTotal||0) - g.vt).toFixed(1)} pts)` : ""}</b></span>
+              {g.completed && <span>Actual Total: <b style={{ color: ou?.actualResult === "OVER" ? "#16a34a" : "#60a5fa", fontFamily: mono }}>{ou?.actualTotal} ({ou?.actualResult})</b></span>}
+            </div>
+          </div>;
+        })}
       </div>
     </div>;
   }
@@ -1768,6 +1833,11 @@ export default function App() {
     if (valOnly) g = g.filter(x => x.p.spreadLeanTeam || x.p.totalLeanDir);
     if (sort === "value") g.sort((a, b) => (Math.abs(b.p.spreadVal) + Math.abs(b.p.totalVal)) - (Math.abs(a.p.spreadVal) + Math.abs(a.p.totalVal)));
     else if (sort === "confidence") g.sort((a, b) => Math.max(b.p.spreadConf, b.p.totalConf) - Math.max(a.p.spreadConf, a.p.totalConf));
+    else if (sort === "time") {
+      const dayOrd = { Tue: 0, Wed: 1, Thu: 2, Fri: 3 };
+      const parseTime = (t) => { const [h, rest] = (t || "12:00 ET").split(":"); const m = parseInt(rest); let hr = parseInt(h); if (hr < 6) hr += 12; return hr * 60 + m; };
+      g.sort((a, b) => ((dayOrd[a.day]||0)*10000 + parseTime(a.time)) - ((dayOrd[b.day]||0)*10000 + parseTime(b.time)));
+    }
     else g.sort((a, b) => Math.abs(a.vs) - Math.abs(b.vs));
     return g;
   }, [reg, sort, minC, valOnly, lines, dayFilter]);
@@ -1863,6 +1933,7 @@ export default function App() {
         <select value={sort} onChange={e => setSort(e.target.value)} style={{ padding: "5px 8px", borderRadius: 7, border: "1px solid var(--bd)", background: "var(--sf)", color: "var(--tx)", fontSize: 10, fontWeight: 600, fontFamily: "'JetBrains Mono',mono", cursor: "pointer" }}>
           <option value="value">Sort: Best Value</option>
           <option value="confidence">Sort: Highest Confidence</option>
+          <option value="time">Sort: Game Time</option>
           <option value="spread">Sort: Tightest Spread</option>
         </select>
         <button onClick={() => setValOnly(!valOnly)} style={{ padding: "5px 10px", borderRadius: 7, border: `1px solid ${valOnly ? "#16a34a44" : "var(--bd)"}`, background: valOnly ? "#16a34a14" : "var(--sf)", color: valOnly ? "#16a34a" : "#555", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'JetBrains Mono',mono" }}>🔥 Value Only</button>
