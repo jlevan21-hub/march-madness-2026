@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 
 /*
  * ═══════════════════════════════════════════════════════════════════════════════
- * MARCH MADNESS 2026 — PREDICTIVE BETTING MODEL v2.0
+ * MARCH MADNESS 2026 — PREDICTIVE BETTING MODEL v4.1
  * ═══════════════════════════════════════════════════════════════════════════════
  * DATA SOURCES:
  *   1. KenPom (kenpom.com) — AdjO rank, AdjD rank, AdjEM, AdjTempo
@@ -60,7 +60,7 @@ const T = {
   "Furman":           { s:15, r:"East", rec:"22-12", conf:"SoCon",kpRk:190, kpOffRk:200, kpDefRk:182, kpEM:-8.2,  adjT:68.8, trvkL30:5.8,  emInjAdj:0,    hmRim:29.2, hmTrans:14.2, ats:"18-16", injNote:"", stars:[{n:"Alex Wilkins",bpr:2.2,ppg:15.4},{n:"Cooper Bowser",bpr:1.8,ppg:14.1}], coach:"Bob Richey", cTrn:2, oEFG:49.4,oTO:19.0,oORB:27.2,oFTR:28.9,dEFG:50.0,dTO:18.5,dORB:72.0,dFTR:29.9,l10:[8,2],exp:189,cont:75,cATSt:"1-2" },
 
   // ═══ WEST REGION ═══
-  "Arizona":          { s:1, r:"West", rec:"32-2", conf:"B12",   kpRk:3,   kpOffRk:5,  kpDefRk:3,   kpEM:38.4,  adjT:70.8, trvkL30:1.2,  emInjAdj:0,    hmRim:35.2, hmTrans:17.2, ats:"23-11", injNote:"", stars:[{n:"AJ Dybantsa",bpr:7.8,ppg:22.5},{n:"Koa Peat",bpr:4.4,ppg:14.6}], coach:"Tommy Lloyd", cTrn:3, oEFG:56.8,oTO:13.3,oORB:36.7,oFTR:41.7,dEFG:43.2,dTO:23.7,dORB:77.9,dFTR:19.2,l10:[9,1],exp:3,cont:85,cATSt:"4-3" },
+  "Arizona":          { s:1, r:"West", rec:"32-2", conf:"B12",   kpRk:3,   kpOffRk:5,  kpDefRk:3,   kpEM:38.4,  adjT:70.8, trvkL30:1.2,  emInjAdj:0,    hmRim:35.2, hmTrans:17.2, ats:"23-11", injNote:"", stars:[{n:"Brayden Burries",bpr:6.2,ppg:15.5},{n:"Koa Peat",bpr:4.4,ppg:13.3}], coach:"Tommy Lloyd", cTrn:3, oEFG:56.8,oTO:13.3,oORB:36.7,oFTR:41.7,dEFG:43.2,dTO:23.7,dORB:77.9,dFTR:19.2,l10:[9,1],exp:3,cont:85,cATSt:"4-3" },
   "Long Island":      { s:16, r:"West", rec:"24-10", conf:"NEC", kpRk:216, kpOffRk:239, kpDefRk:186, kpEM:-10.6, adjT:67.4, trvkL30:0.2,  emInjAdj:0,    hmRim:28.6, hmTrans:12.8, ats:"16-18", injNote:"", stars:[{n:"R.J. Greene",bpr:1.8,ppg:16.8}], coach:"Rod Strickland", cTrn:1, oEFG:47.9,oTO:20.1,oORB:25.3,oFTR:26.3,dEFG:50.1,dTO:18.4,dORB:71.9,dFTR:30.2,l10:[6,4],exp:207,cont:72,cATSt:"0-0" },
   "Villanova":        { s:8, r:"West", rec:"24-8", conf:"BE",    kpRk:33,  kpOffRk:41, kpDefRk:35,  kpEM:12.2,  adjT:67.2, trvkL30:-2.8, emInjAdj:0,    hmRim:31.6, hmTrans:14.4, ats:"19-13", injNote:"", stars:[{n:"Eric Dixon",bpr:4.0,ppg:16.4}], coach:"Kyle Neptune", cTrn:2, oEFG:55.4,oTO:14.4,oORB:35.0,oFTR:39.4,dEFG:44.4,dTO:22.8,dORB:76.9,dFTR:21.1,l10:[5,5],exp:37,cont:85,cATSt:"1-2" },
   "Utah State":       { s:9, r:"West", rec:"28-6", conf:"MWC",   kpRk:30,  kpOffRk:28, kpDefRk:44,  kpEM:13.0,  adjT:68.4, trvkL30:2.2,  emInjAdj:0,    hmRim:32.8, hmTrans:15.8, ats:"20-14", injNote:"", stars:[{n:"MJ Collins",bpr:3.8,ppg:16.4},{n:"Mason Falslev",bpr:3.4,ppg:15.2}], coach:"Jerrod Calhoun", cTrn:2, oEFG:55.9,oTO:14.0,oORB:35.6,oFTR:40.2,dEFG:44.7,dTO:22.5,dORB:76.6,dFTR:21.7,l10:[8,2],exp:37,cont:85,cATSt:"1-2" },
@@ -246,6 +246,186 @@ const DEEP = {
   "Wisconsin": {em_trajectory:-2.27,away_em:-1.82,away_win_pct:0.5294,q_em:-4.89,q_win_pct:0.5556,margin_std:16.82,close_win_pct:0.7,blowout_pct:0.4706,l10_em:6.0,momentum:-1.54,l30_em:6.0,avg_total:158.91},
   "Wright State": {em_trajectory:-6.45,away_em:3.67,away_win_pct:0.6667,q_em:3.67,q_win_pct:0.6667,margin_std:16.28,close_win_pct:0.6,blowout_pct:0.2353,l10_em:6.3,momentum:-1.41,l30_em:6.3,avg_total:154.18},
 };
+
+// ─── O/U TOTAL PREDICTION MODEL (Kaggle-trained Ridge, 1369 tourney games) ────
+// LOSO MAE: 12.6 pts | Backtest O/U: 21-10 (67.7%) vs DK closing totals
+const OU_MODEL = {
+  intercept: 138.42512783053323,
+  c: {
+    avg_tempo: 2.1854609294258127,
+    tempo_diff: -0.4017164163109838,
+    cross_total: 3.604253828191856,
+    avg_game_total: 3.871077571665716,
+    combined_ppg: 1.3169798915521194,
+    combined_off_eff: 4.341533847237162,
+    combined_def_eff: 0.4954423692485391,
+    avg_efg_o: -4.76464161432656,
+    avg_efg_d: -0.6278235524683342,
+    avg_to_rate_o: 3.1459208140632087,
+    avg_to_rate_d: 0.679707885021568,
+    avg_orb_rate: -1.5058520478273667,
+    avg_ftr_o: -1.7365450361096875,
+    avg_ftr_d: -1.0484422642091897,
+    avg_three_rate: -0.820192174650168,
+    avg_three_pct: 0.009861092336231312,
+    avg_ft_pct: -0.730764861505131,
+    eff_diff: 0.4615961474665081,
+    combined_gt_std: 0.8467964560568692,
+  },
+  mu: {
+    avg_tempo: 68.4504808401151,
+    tempo_diff: 3.552923902492928,
+    cross_total: 144.62293179461287,
+    avg_game_total: 141.0040062882865,
+    combined_ppg: 150.0336448031753,
+    combined_off_eff: 109.57248625268444,
+    combined_def_eff: 96.36907904685071,
+    avg_efg_o: 52.42957017218985,
+    avg_efg_d: 47.10402075639547,
+    avg_to_rate_o: 15.386983519529323,
+    avg_to_rate_d: 17.177091122297227,
+    avg_orb_rate: 33.1819608949335,
+    avg_ftr_o: 36.594438479892496,
+    avg_ftr_d: 32.4287180967098,
+    avg_three_rate: 34.637476126922294,
+    avg_three_pct: 36.01068945943523,
+    avg_ft_pct: 71.37665639413152,
+    eff_diff: 5.46824654689949,
+    combined_gt_std: 17.231890977825888,
+  },
+  sd: {
+    avg_tempo: 2.5621898042355373,
+    tempo_diff: 2.778311556341792,
+    cross_total: 9.736036399495104,
+    avg_game_total: 6.782694673969421,
+    combined_ppg: 7.719708647935467,
+    combined_off_eff: 3.6135207527538458,
+    combined_def_eff: 3.3144079323979376,
+    avg_efg_o: 1.9297857200220683,
+    avg_efg_d: 1.7374310866214078,
+    avg_to_rate_o: 1.6268403419389732,
+    avg_to_rate_d: 1.9725119396078505,
+    avg_orb_rate: 3.7308029385878134,
+    avg_ftr_o: 4.197458653288446,
+    avg_ftr_d: 4.097930070073291,
+    avg_three_rate: 4.388737286399728,
+    avg_three_pct: 1.8239979866266542,
+    avg_ft_pct: 2.6914521890073093,
+    eff_diff: 4.361914730647964,
+    combined_gt_std: 1.8287472707685093,
+  },
+};
+
+// ─── 2026 TEAM O/U PROFILES (from Kaggle regular season data) ────────────────
+const OU_PROFILES = {
+  "Akron": {tempo:72.24, offEff:120.26, defEff:103.13, ppg:86.88, papg:74.5, avgTotal:161.38, efgO:58.46, toRateO:12.88, orbRate:32.66, ftrO:29.06, efgD:50.57, toRateD:15.16, drbRate:72.45, ftrD:30.29, threeRate:45.13, threePct:38.5, ftPct:75.26, gtStd:20.08},
+  "Alabama": {tempo:76.98, offEff:119.15, defEff:108.44, ppg:91.72, papg:83.47, avgTotal:175.19, efgO:55.38, toRateO:10.85, orbRate:29.34, ftrO:37.19, efgD:49.18, toRateD:10.44, drbRate:69.54, ftrD:32.65, threeRate:53.65, threePct:35.81, ftPct:76.53, gtStd:17.31},
+  "Arizona": {tempo:72.86, offEff:118.23, defEff:94.42, ppg:86.15, papg:68.79, avgTotal:154.94, efgO:55.05, toRateO:12.57, orbRate:38.07, ftrO:42.87, efgD:45.02, toRateD:14.3, drbRate:75.47, ftrD:27.71, threeRate:26.82, threePct:36.04, ftPct:73.39, gtStd:17.04},
+  "Arkansas": {tempo:74.58, offEff:120.59, defEff:107.38, ppg:89.94, papg:80.09, avgTotal:170.03, efgO:56.48, toRateO:10.49, orbRate:30.17, ftrO:36.39, efgD:51.36, toRateD:12.87, drbRate:70.29, ftrD:31.32, threeRate:33.36, threePct:38.87, ftPct:74.69, gtStd:17.42},
+  "BYU": {tempo:72.26, offEff:116.13, defEff:104.25, ppg:83.91, papg:75.32, avgTotal:159.24, efgO:54.65, toRateO:12.7, orbRate:32.51, ftrO:34.15, efgD:51.18, toRateD:13.73, drbRate:73.77, ftrD:28.9, threeRate:39.77, threePct:34.92, ftPct:74.55, gtStd:18.69},
+  "Cal Baptist": {tempo:69.3, offEff:105.38, defEff:97.51, ppg:73.03, papg:67.58, avgTotal:140.61, efgO:48.59, toRateO:14.19, orbRate:36.05, ftrO:36.13, efgD:46.41, toRateD:14.56, drbRate:74.39, ftrD:37.14, threeRate:32.14, threePct:33.7, ftPct:71.85, gtStd:16.63},
+  "Clemson": {tempo:66.48, offEff:111.54, defEff:100.39, ppg:74.15, papg:66.74, avgTotal:140.88, efgO:52.65, toRateO:11.63, orbRate:26.39, ftrO:37.15, efgD:48.92, toRateD:14.59, drbRate:75.85, ftrD:33.12, threeRate:42.92, threePct:34.11, ftPct:72.6, gtStd:15.62},
+  "Duke": {tempo:68.19, offEff:120.69, defEff:92.61, ppg:82.29, papg:63.15, avgTotal:145.44, efgO:56.77, toRateO:12.87, orbRate:36.58, ftrO:37.76, efgD:46.18, toRateD:15.18, drbRate:77.92, ftrD:23.74, threeRate:44.36, threePct:35.07, ftPct:72.4, gtStd:16.21},
+  "Florida": {tempo:73.51, offEff:118.07, defEff:97.95, ppg:86.79, papg:72.0, avgTotal:158.79, efgO:53.53, toRateO:12.93, orbRate:43.23, ftrO:39.06, efgD:46.3, toRateD:12.95, drbRate:77.48, ftrD:34.02, threeRate:37.13, threePct:30.8, ftPct:70.96, gtStd:16.08},
+  "Furman": {tempo:68.26, offEff:109.97, defEff:105.72, ppg:75.06, papg:72.16, avgTotal:147.23, efgO:54.79, toRateO:14.8, orbRate:29.47, ftrO:32.1, efgD:50.11, toRateD:11.3, drbRate:74.35, ftrD:28.93, threeRate:46.34, threePct:33.29, ftPct:69.79, gtStd:14.69},
+  "Georgia": {tempo:75.78, offEff:118.52, defEff:104.46, ppg:89.81, papg:79.16, avgTotal:168.97, efgO:54.6, toRateO:11.77, orbRate:32.87, ftrO:36.96, efgD:50.12, toRateD:14.51, drbRate:67.73, ftrD:30.76, threeRate:43.92, threePct:34.09, ftPct:75.35, gtStd:19.74},
+  "Gonzaga": {tempo:71.7, offEff:118.72, defEff:92.05, ppg:85.12, papg:66.0, avgTotal:151.12, efgO:56.26, toRateO:11.5, orbRate:34.17, ftrO:31.12, efgD:46.19, toRateD:17.06, drbRate:76.35, ftrD:30.95, threeRate:30.98, threePct:33.95, ftPct:69.89, gtStd:17.4},
+  "Hawaii": {tempo:74.06, offEff:106.32, defEff:94.93, ppg:78.73, papg:70.3, avgTotal:149.03, efgO:51.98, toRateO:15.95, orbRate:29.12, ftrO:42.44, efgD:46.42, toRateD:14.6, drbRate:77.15, ftrD:36.07, threeRate:39.69, threePct:31.6, ftPct:73.82, gtStd:14.75},
+  "High Point": {tempo:72.62, offEff:119.04, defEff:98.88, ppg:86.45, papg:71.81, avgTotal:158.26, efgO:54.72, toRateO:10.96, orbRate:30.67, ftrO:42.91, efgD:50.06, toRateD:18.11, drbRate:70.03, ftrD:36.38, threeRate:42.91, threePct:34.4, ftPct:74.2, gtStd:15.33},
+  "Hofstra": {tempo:66.88, offEff:111.39, defEff:101.02, ppg:74.5, papg:67.56, avgTotal:142.06, efgO:51.47, toRateO:12.46, orbRate:33.6, ftrO:32.49, efgD:45.88, toRateD:11.96, drbRate:71.89, ftrD:35.37, threeRate:43.15, threePct:36.85, ftPct:75.95, gtStd:14.77},
+  "Houston": {tempo:66.58, offEff:115.87, defEff:94.4, ppg:77.15, papg:62.85, avgTotal:140.0, efgO:52.1, toRateO:10.14, orbRate:34.36, ftrO:26.92, efgD:46.56, toRateD:17.46, drbRate:72.16, ftrD:39.04, threeRate:40.78, threePct:34.93, ftPct:77.17, gtStd:16.96},
+  "Howard": {tempo:70.85, offEff:105.85, defEff:95.68, ppg:75.0, papg:67.79, avgTotal:142.79, efgO:50.62, toRateO:15.78, orbRate:33.37, ftrO:44.18, efgD:47.38, toRateD:17.53, drbRate:71.11, ftrD:38.33, threeRate:34.26, threePct:34.71, ftPct:74.2, gtStd:13.41},
+  "Idaho": {tempo:71.02, offEff:107.93, defEff:104.19, ppg:76.66, papg:74.0, avgTotal:150.66, efgO:51.9, toRateO:12.7, orbRate:25.52, ftrO:34.81, efgD:50.33, toRateD:12.96, drbRate:78.15, ftrD:39.22, threeRate:46.81, threePct:34.53, ftPct:72.92, gtStd:14.24},
+  "Illinois": {tempo:68.05, offEff:123.99, defEff:102.59, ppg:84.38, papg:69.81, avgTotal:154.19, efgO:55.07, toRateO:10.67, orbRate:38.38, ftrO:32.91, efgD:47.63, toRateD:9.49, drbRate:74.14, ftrD:20.6, threeRate:50.71, threePct:34.69, ftPct:78.87, gtStd:16.98},
+  "Iowa": {tempo:64.19, offEff:117.18, defEff:102.78, ppg:75.21, papg:65.97, avgTotal:141.18, efgO:56.56, toRateO:12.59, orbRate:28.23, ftrO:34.5, efgD:52.68, toRateD:17.89, drbRate:73.75, ftrD:39.14, threeRate:41.59, threePct:35.72, ftPct:77.0, gtStd:13.74},
+  "Iowa State": {tempo:64.19, offEff:117.18, defEff:102.78, ppg:75.21, papg:65.97, avgTotal:141.18, efgO:56.56, toRateO:12.59, orbRate:28.23, ftrO:34.5, efgD:52.68, toRateD:17.89, drbRate:73.75, ftrD:39.14, threeRate:41.59, threePct:35.72, ftPct:77.0, gtStd:13.74},
+  "Kansas": {tempo:69.81, offEff:108.35, defEff:99.41, ppg:75.64, papg:69.39, avgTotal:145.03, efgO:51.57, toRateO:13.1, orbRate:28.03, ftrO:32.6, efgD:45.23, toRateD:10.9, drbRate:72.51, ftrD:27.68, threeRate:35.68, threePct:34.96, ftPct:76.69, gtStd:19.09},
+  "Kennesaw State": {tempo:74.4, offEff:108.26, defEff:105.4, ppg:80.55, papg:78.42, avgTotal:158.97, efgO:50.72, toRateO:13.87, orbRate:33.59, ftrO:45.13, efgD:48.5, toRateD:13.13, drbRate:72.89, ftrD:47.47, threeRate:42.94, threePct:33.75, ftPct:70.01, gtStd:21.22},
+  "Kentucky": {tempo:70.81, offEff:114.06, defEff:104.26, ppg:80.76, papg:73.82, avgTotal:154.59, efgO:53.11, toRateO:12.21, orbRate:32.48, ftrO:37.48, efgD:48.76, toRateD:13.06, drbRate:71.62, ftrD:36.95, threeRate:39.18, threePct:34.12, ftPct:72.76, gtStd:15.91},
+  "Lehigh": {tempo:69.63, offEff:103.95, defEff:107.22, ppg:72.38, papg:74.66, avgTotal:147.03, efgO:53.28, toRateO:15.3, orbRate:20.81, ftrO:32.17, efgD:50.61, toRateD:13.59, drbRate:69.2, ftrD:32.82, threeRate:38.18, threePct:36.47, ftPct:72.95, gtStd:16.65},
+  "Long Island": {tempo:69.45, offEff:106.68, defEff:102.41, ppg:74.09, papg:71.12, avgTotal:145.21, efgO:53.3, toRateO:15.82, orbRate:33.66, ftrO:34.72, efgD:49.8, toRateD:15.42, drbRate:70.3, ftrD:34.11, threeRate:28.95, threePct:36.12, ftPct:66.77, gtStd:21.67},
+  "Louisville": {tempo:71.88, offEff:117.91, defEff:100.42, ppg:84.76, papg:72.18, avgTotal:156.94, efgO:56.47, toRateO:13.82, orbRate:31.65, ftrO:33.47, efgD:48.75, toRateD:13.99, drbRate:75.37, ftrD:33.4, threeRate:52.8, threePct:35.68, ftPct:76.89, gtStd:16.86},
+  "McNeese": {tempo:68.14, offEff:112.77, defEff:98.38, ppg:76.84, papg:67.03, avgTotal:143.87, efgO:50.96, toRateO:11.47, orbRate:33.57, ftrO:38.35, efgD:48.95, toRateD:19.41, drbRate:68.31, ftrD:42.14, threeRate:35.12, threePct:31.62, ftPct:74.04, gtStd:14.84},
+  "Miami (FL)": {tempo:70.52, offEff:116.2, defEff:100.94, ppg:81.94, papg:71.18, avgTotal:153.12, efgO:55.62, toRateO:13.37, orbRate:34.21, ftrO:37.47, efgD:51.77, toRateD:15.49, drbRate:75.9, ftrD:29.03, threeRate:31.65, threePct:34.72, ftPct:68.51, gtStd:15.32},
+  "Miami (OH)": {tempo:73.57, offEff:118.53, defEff:103.77, ppg:87.21, papg:76.34, avgTotal:163.55, efgO:59.16, toRateO:12.47, orbRate:23.02, ftrO:40.22, efgD:50.84, toRateD:14.83, drbRate:73.66, ftrD:30.88, threeRate:44.63, threePct:37.5, ftPct:75.04, gtStd:20.65},
+  "Michigan": {tempo:72.96, offEff:119.01, defEff:94.86, ppg:86.82, papg:69.21, avgTotal:156.03, efgO:58.06, toRateO:14.13, orbRate:34.43, ftrO:37.68, efgD:44.73, toRateD:12.9, drbRate:75.14, ftrD:26.26, threeRate:41.79, threePct:36.02, ftPct:74.71, gtStd:16.49},
+  "Michigan State": {tempo:72.96, offEff:119.01, defEff:94.86, ppg:86.82, papg:69.21, avgTotal:156.03, efgO:58.06, toRateO:14.13, orbRate:34.43, ftrO:37.68, efgD:44.73, toRateD:12.9, drbRate:75.14, ftrD:26.26, threeRate:41.79, threePct:36.02, ftPct:74.71, gtStd:16.49},
+  "Missouri": {tempo:70.31, offEff:113.29, defEff:107.16, ppg:79.66, papg:75.34, avgTotal:155.0, efgO:55.35, toRateO:14.62, orbRate:32.73, ftrO:42.46, efgD:51.45, toRateD:13.87, drbRate:71.3, ftrD:35.06, threeRate:36.04, threePct:35.01, ftPct:68.6, gtStd:12.33},
+  "N. Dakota State": {tempo:70.09, offEff:112.8, defEff:100.98, ppg:79.06, papg:70.77, avgTotal:149.84, efgO:53.36, toRateO:12.82, orbRate:31.98, ftrO:30.66, efgD:51.54, toRateD:16.11, drbRate:76.43, ftrD:29.14, threeRate:42.73, threePct:35.75, ftPct:71.58, gtStd:17.52},
+  "NC State": {tempo:71.08, offEff:117.75, defEff:107.65, ppg:83.7, papg:76.52, avgTotal:160.21, efgO:55.33, toRateO:11.26, orbRate:26.92, ftrO:35.19, efgD:53.05, toRateD:14.95, drbRate:70.94, ftrD:36.53, threeRate:43.92, threePct:38.82, ftPct:76.77, gtStd:17.75},
+  "Nebraska": {tempo:68.5, offEff:112.82, defEff:96.67, ppg:77.28, papg:66.22, avgTotal:143.5, efgO:55.44, toRateO:12.4, orbRate:25.3, ftrO:27.18, efgD:47.8, toRateD:15.86, drbRate:74.44, ftrD:24.83, threeRate:50.74, threePct:35.25, ftPct:75.0, gtStd:18.63},
+  "North Carolina": {tempo:70.47, offEff:113.21, defEff:101.19, ppg:79.78, papg:71.31, avgTotal:151.09, efgO:54.56, toRateO:12.02, orbRate:29.18, ftrO:37.41, efgD:48.17, toRateD:11.15, drbRate:75.3, ftrD:23.82, threeRate:42.27, threePct:34.46, ftPct:68.41, gtStd:14.45},
+  "Northern Iowa": {tempo:64.64, offEff:106.83, defEff:96.0, ppg:69.06, papg:62.06, avgTotal:131.12, efgO:54.17, toRateO:12.6, orbRate:19.8, ftrO:25.7, efgD:47.21, toRateD:14.99, drbRate:75.52, ftrD:29.34, threeRate:39.57, threePct:34.92, ftPct:69.67, gtStd:16.38},
+  "Ohio State": {tempo:72.15, offEff:106.31, defEff:110.88, ppg:76.7, papg:80.0, avgTotal:156.7, efgO:50.95, toRateO:12.73, orbRate:26.42, ftrO:36.92, efgD:53.02, toRateD:13.49, drbRate:69.15, ftrD:38.19, threeRate:38.14, threePct:30.07, ftPct:71.04, gtStd:20.8},
+  "Penn": {tempo:70.3, offEff:106.08, defEff:104.35, ppg:74.57, papg:73.36, avgTotal:147.93, efgO:50.33, toRateO:12.84, orbRate:28.66, ftrO:35.17, efgD:51.72, toRateD:14.41, drbRate:71.28, ftrD:27.46, threeRate:34.99, threePct:38.7, ftPct:69.51, gtStd:15.14},
+  "Prairie View A&M": {tempo:73.96, offEff:102.4, defEff:106.2, ppg:75.74, papg:78.55, avgTotal:154.29, efgO:47.88, toRateO:13.37, orbRate:24.37, ftrO:42.76, efgD:50.41, toRateD:15.63, drbRate:66.37, ftrD:43.92, threeRate:30.88, threePct:33.16, ftPct:75.16, gtStd:20.95},
+  "Purdue": {tempo:66.38, offEff:123.02, defEff:105.67, ppg:81.66, papg:70.14, avgTotal:151.8, efgO:57.62, toRateO:11.13, orbRate:34.96, ftrO:28.61, efgD:52.29, toRateD:13.46, drbRate:75.26, ftrD:26.02, threeRate:40.93, threePct:37.92, ftPct:74.29, gtStd:14.8},
+  "Queens": {tempo:72.69, offEff:116.69, defEff:114.4, ppg:84.82, papg:83.15, avgTotal:167.97, efgO:56.59, toRateO:12.66, orbRate:28.56, ftrO:36.31, efgD:53.97, toRateD:12.45, drbRate:69.94, ftrD:38.75, threeRate:46.79, threePct:35.91, ftPct:74.86, gtStd:15.87},
+  "SMU": {tempo:72.92, offEff:115.48, defEff:106.42, ppg:84.21, papg:77.61, avgTotal:161.82, efgO:55.75, toRateO:13.05, orbRate:32.79, ftrO:30.61, efgD:51.4, toRateD:14.26, drbRate:71.78, ftrD:32.02, threeRate:35.97, threePct:37.45, ftPct:74.13, gtStd:15.11},
+  "Saint Louis": {tempo:72.87, offEff:118.58, defEff:96.97, ppg:86.41, papg:70.66, avgTotal:157.06, efgO:59.75, toRateO:15.09, orbRate:29.34, ftrO:34.68, efgD:44.76, toRateD:13.11, drbRate:74.64, ftrD:37.17, threeRate:45.14, threePct:40.51, ftPct:74.39, gtStd:14.49},
+  "Saint Mary's": {tempo:67.3, offEff:115.33, defEff:97.02, ppg:77.61, papg:65.29, avgTotal:142.9, efgO:52.94, toRateO:13.3, orbRate:36.48, ftrO:35.84, efgD:46.68, toRateD:12.58, drbRate:79.02, ftrD:25.72, threeRate:36.06, threePct:38.57, ftPct:81.06, gtStd:13.92},
+  "Santa Clara": {tempo:70.62, offEff:117.32, defEff:103.42, ppg:82.85, papg:73.03, avgTotal:155.88, efgO:54.62, toRateO:12.45, orbRate:35.0, ftrO:25.76, efgD:51.78, toRateD:17.04, drbRate:69.34, ftrD:38.33, threeRate:44.96, threePct:34.86, ftPct:73.95, gtStd:18.44},
+  "Siena": {tempo:65.23, offEff:108.12, defEff:100.68, ppg:70.53, papg:65.68, avgTotal:136.21, efgO:50.56, toRateO:13.07, orbRate:30.34, ftrO:34.22, efgD:48.61, toRateD:14.14, drbRate:71.98, ftrD:27.24, threeRate:31.93, threePct:30.45, ftPct:76.86, gtStd:13.63},
+  "South Florida": {tempo:76.55, offEff:113.65, defEff:99.69, ppg:87.0, papg:76.31, avgTotal:163.31, efgO:50.9, toRateO:12.19, orbRate:35.78, ftrO:41.13, efgD:48.35, toRateD:15.56, drbRate:71.12, ftrD:38.81, threeRate:43.79, threePct:33.12, ftPct:74.34, gtStd:23.0},
+  "St. John's": {tempo:72.78, offEff:112.06, defEff:96.14, ppg:81.56, papg:69.97, avgTotal:151.53, efgO:51.0, toRateO:11.99, orbRate:33.54, ftrO:41.9, efgD:47.36, toRateD:15.73, drbRate:73.19, ftrD:31.75, threeRate:33.78, threePct:33.24, ftPct:72.75, gtStd:18.54},
+  "TCU": {tempo:71.68, offEff:109.25, defEff:100.54, ppg:78.3, papg:72.06, avgTotal:150.36, efgO:50.9, toRateO:12.62, orbRate:32.25, ftrO:38.7, efgD:51.02, toRateD:16.46, drbRate:72.97, ftrD:30.36, threeRate:36.85, threePct:33.11, ftPct:70.8, gtStd:21.95},
+  "Tennessee": {tempo:69.33, offEff:114.6, defEff:100.05, ppg:79.45, papg:69.36, avgTotal:148.82, efgO:51.56, toRateO:13.29, orbRate:44.69, ftrO:38.72, efgD:47.7, toRateD:13.55, drbRate:75.54, ftrD:36.22, threeRate:31.73, threePct:33.44, ftPct:69.4, gtStd:11.4},
+  "Tennessee State": {tempo:72.28, offEff:108.01, defEff:102.29, ppg:78.07, papg:73.93, avgTotal:152.0, efgO:50.11, toRateO:13.37, orbRate:32.32, ftrO:33.5, efgD:51.24, toRateD:17.01, drbRate:72.74, ftrD:41.62, threeRate:30.67, threePct:33.7, ftPct:76.29, gtStd:20.8},
+  "Texas": {tempo:70.4, offEff:117.4, defEff:109.06, ppg:82.65, papg:76.77, avgTotal:159.42, efgO:54.22, toRateO:12.69, orbRate:34.26, ftrO:46.17, efgD:51.17, toRateD:11.33, drbRate:76.11, ftrD:40.68, threeRate:36.17, threePct:34.93, ftPct:75.3, gtStd:17.33},
+  "Texas A&M": {tempo:75.4, offEff:116.34, defEff:105.52, ppg:87.72, papg:79.56, avgTotal:167.28, efgO:54.19, toRateO:12.14, orbRate:29.82, ftrO:37.38, efgD:50.75, toRateD:14.97, drbRate:68.77, ftrD:35.58, threeRate:46.3, threePct:36.19, ftPct:73.7, gtStd:16.71},
+  "Texas Tech": {tempo:69.17, offEff:116.24, defEff:104.99, ppg:80.41, papg:72.62, avgTotal:153.03, efgO:56.2, toRateO:12.92, orbRate:32.3, ftrO:27.09, efgD:49.43, toRateD:12.25, drbRate:71.51, ftrD:31.6, threeRate:48.03, threePct:39.34, ftPct:71.46, gtStd:17.46},
+  "Troy": {tempo:71.17, offEff:110.01, defEff:104.66, ppg:78.29, papg:74.48, avgTotal:152.77, efgO:51.88, toRateO:13.9, orbRate:32.96, ftrO:36.31, efgD:50.08, toRateD:13.95, drbRate:70.04, ftrD:32.14, threeRate:45.56, threePct:33.18, ftPct:73.78, gtStd:26.27},
+  "UCF": {tempo:72.34, offEff:111.93, defEff:108.48, ppg:80.97, papg:78.47, avgTotal:159.44, efgO:52.83, toRateO:13.08, orbRate:32.66, ftrO:30.84, efgD:52.37, toRateD:13.25, drbRate:73.05, ftrD:35.25, threeRate:34.41, threePct:36.17, ftPct:73.95, gtStd:19.36},
+  "UCLA": {tempo:67.38, offEff:115.37, defEff:105.38, ppg:77.74, papg:71.0, avgTotal:148.74, efgO:53.93, toRateO:10.94, orbRate:28.92, ftrO:33.06, efgD:50.45, toRateD:14.94, drbRate:69.37, ftrD:34.67, threeRate:35.89, threePct:38.2, ftPct:76.68, gtStd:18.77},
+  "UConn": {tempo:67.61, offEff:114.63, defEff:96.31, ppg:77.5, papg:65.12, avgTotal:142.62, efgO:55.34, toRateO:13.35, orbRate:33.73, ftrO:29.99, efgD:45.66, toRateD:15.06, drbRate:74.06, ftrD:40.17, threeRate:40.32, threePct:35.2, ftPct:71.57, gtStd:18.39},
+  "UMBC": {tempo:67.77, offEff:111.31, defEff:100.29, ppg:75.43, papg:67.97, avgTotal:143.4, efgO:53.93, toRateO:11.89, orbRate:22.76, ftrO:33.79, efgD:49.15, toRateD:12.81, drbRate:76.59, ftrD:25.16, threeRate:38.81, threePct:35.92, ftPct:76.4, gtStd:12.87},
+  "Utah State": {tempo:69.66, offEff:117.28, defEff:101.7, ppg:81.7, papg:70.85, avgTotal:152.55, efgO:56.62, toRateO:12.79, orbRate:31.1, ftrO:38.69, efgD:49.59, toRateD:16.54, drbRate:69.94, ftrD:38.89, threeRate:40.72, threePct:35.08, ftPct:70.62, gtStd:15.16},
+  "VCU": {tempo:70.62, offEff:115.5, defEff:101.21, ppg:81.56, papg:71.47, avgTotal:153.03, efgO:54.08, toRateO:12.64, orbRate:31.23, ftrO:43.72, efgD:48.85, toRateD:14.18, drbRate:73.15, ftrD:33.08, threeRate:43.77, threePct:36.69, ftPct:73.93, gtStd:15.69},
+  "Vanderbilt": {tempo:72.54, offEff:119.04, defEff:103.68, ppg:86.35, papg:75.21, avgTotal:161.56, efgO:55.28, toRateO:10.86, orbRate:28.92, ftrO:38.18, efgD:48.77, toRateD:14.82, drbRate:71.4, ftrD:40.96, threeRate:43.6, threePct:35.53, ftPct:79.27, gtStd:15.41},
+  "Villanova": {tempo:68.35, offEff:112.89, defEff:103.56, ppg:77.16, papg:70.78, avgTotal:147.94, efgO:53.71, toRateO:11.84, orbRate:30.05, ftrO:31.28, efgD:51.28, toRateD:15.56, drbRate:70.05, ftrD:28.91, threeRate:45.66, threePct:35.28, ftPct:69.4, gtStd:14.96},
+  "Virginia": {tempo:69.04, offEff:116.82, defEff:99.1, ppg:80.65, papg:68.41, avgTotal:149.06, efgO:54.62, toRateO:12.85, orbRate:37.02, ftrO:33.04, efgD:45.33, toRateD:12.69, drbRate:73.34, ftrD:33.02, threeRate:46.5, threePct:35.95, ftPct:72.65, gtStd:17.12},
+  "Wisconsin": {tempo:70.82, offEff:117.21, defEff:107.2, ppg:83.0, papg:75.91, avgTotal:158.91, efgO:54.46, toRateO:10.65, orbRate:27.29, ftrO:31.91, efgD:51.33, toRateD:11.91, drbRate:73.4, ftrD:30.48, threeRate:52.61, threePct:36.1, ftPct:78.57, gtStd:16.51},
+  "Wright State": {tempo:70.59, offEff:113.29, defEff:106.83, ppg:79.97, papg:75.41, avgTotal:155.38, efgO:54.42, toRateO:13.61, orbRate:31.16, ftrO:38.0, efgD:52.08, toRateD:14.1, drbRate:72.66, ftrD:33.51, threeRate:33.65, threePct:36.15, ftPct:74.47, gtStd:15.72},
+};
+
+// ─── O/U PREDICTION FUNCTION ──────────────────────────────────────────────
+function predictOU(t1Name, t2Name) {
+  const a = OU_PROFILES[t1Name], b = OU_PROFILES[t2Name];
+  if (!a || !b) return null;
+  
+  const avgTempo = (a.tempo + b.tempo) / 2;
+  const crossA = (a.offEff / 100) * (b.defEff / 100) * avgTempo;
+  const crossB = (b.offEff / 100) * (a.defEff / 100) * avgTempo;
+  
+  const feat = {
+    avg_tempo: avgTempo,
+    tempo_diff: Math.abs(a.tempo - b.tempo),
+    cross_total: crossA + crossB,
+    avg_game_total: (a.avgTotal + b.avgTotal) / 2,
+    combined_ppg: a.ppg + b.ppg,
+    combined_off_eff: (a.offEff + b.offEff) / 2,
+    combined_def_eff: (a.defEff + b.defEff) / 2,
+    avg_efg_o: (a.efgO + b.efgO) / 2,
+    avg_efg_d: (a.efgD + b.efgD) / 2,
+    avg_to_rate_o: (a.toRateO + b.toRateO) / 2,
+    avg_to_rate_d: (a.toRateD + b.toRateD) / 2,
+    avg_orb_rate: (a.orbRate + b.orbRate) / 2,
+    avg_ftr_o: (a.ftrO + b.ftrO) / 2,
+    avg_ftr_d: (a.ftrD + b.ftrD) / 2,
+    avg_three_rate: (a.threeRate + b.threeRate) / 2,
+    avg_three_pct: (a.threePct + b.threePct) / 2,
+    avg_ft_pct: (a.ftPct + b.ftPct) / 2,
+    eff_diff: Math.abs(a.offEff - b.offEff),
+    combined_gt_std: (a.gtStd + b.gtStd) / 2,
+  };
+  
+  let pred = OU_MODEL.intercept;
+  for (const f in OU_MODEL.c) {
+    const z = (feat[f] - OU_MODEL.mu[f]) / OU_MODEL.sd[f];
+    pred += OU_MODEL.c[f] * z;
+  }
+  return Math.round(pred * 2) / 2; // round to nearest 0.5
+}
 
 // ─── PREDICTIVE MODEL v3.2-ML-DEEP ───────────────────────────────────────────
 // Trained on 1,001 real NCAA tournament games (2010–2025) via Kaggle dataset
@@ -455,37 +635,24 @@ function predict(m) {
 
   const modelSpread = Math.round(-rawSpread * 10) / 10;
 
-  // ── TOTAL PREDICTION (rebuilt — Ridge differential model was broken) ──────
-  // Problem: Ridge total model used DIFFERENTIAL features (who wins by how much)
-  // but totals need COMBINED features (how much scoring happens).
-  // Ridge baseline was 139.3 but DK totals range 130-170 (mean 150).
-  //
-  // Fix: Direct calculation using three signals, blended:
-  //   1. KenPom cross-multiplication (AdjO × AdjD for each team)
-  //   2. ESPN average total (both teams' PPG + PAPG from game logs)
-  //   3. Tempo adjustment (faster pace → more scoring)
+  // ── TOTAL PREDICTION (Kaggle-trained Ridge model on 1,369 tournament games) ──
+  // Primary: predictOU() from 19-feature model trained on real NCAA tourney data
+  // Fallback: KenPom cross-multiplication + tempo (if team profiles missing)
+  // LOSO MAE: 12.6 pts | Backtest O/U: 21-10 (67.7%) vs DK closing totals
   
-  // Signal 1: KenPom efficiency cross-multiplication
-  const avgT = (a.adjT + b.adjT) / 2;
-  const aPP100 = (eA.adjO * eB.adjD) / 100; // A's scoring rate vs B's defense
-  const bPP100 = (eB.adjO * eA.adjD) / 100; // B's scoring rate vs A's defense
-  const kpTotal = (aPP100 / 100) * avgT + (bPP100 / 100) * avgT;
-
-  // Signal 2: ESPN average game total (PPG + PAPG for each team, averaged)
-  const espnTotalA = (dA.ppg || 0) + (dA.papg || 0); // Team A's avg game total
-  const espnTotalB = (dB.ppg || 0) + (dB.papg || 0); // Team B's avg game total
-  const espnTotal = (espnTotalA && espnTotalB) ? (espnTotalA + espnTotalB) / 2 : 0;
-
-  // Signal 3: Tempo-driven baseline (NCAA avg is ~68 possessions, ~1.0 PPP each)
-  const tempoTotal = avgT * 2.08; // ~2.08 pts per possession combined (NCAA avg)
-
-  // Blend: prefer ESPN actual data when available, with KenPom as anchor
+  const ouPred = predictOU(m.t1, m.t2);
   let modelTotal;
-  if (espnTotal > 100) {
-    // Have ESPN data for both teams — blend ESPN (60%) + KenPom (30%) + tempo (10%)
-    modelTotal = Math.round((espnTotal * 0.60 + kpTotal * 0.30 + tempoTotal * 0.10) * 2) / 2;
+  
+  if (ouPred !== null) {
+    // Kaggle-trained model available — use as primary
+    modelTotal = ouPred;
   } else {
-    // No ESPN data — use KenPom (70%) + tempo (30%)
+    // Fallback: KenPom cross-multiplication + tempo
+    const avgT = (a.adjT + b.adjT) / 2;
+    const aPP100 = (eA.adjO * eB.adjD) / 100;
+    const bPP100 = (eB.adjO * eA.adjD) / 100;
+    const kpTotal = (aPP100 / 100) * avgT + (bPP100 / 100) * avgT;
+    const tempoTotal = avgT * 2.08;
     modelTotal = Math.round((kpTotal * 0.70 + tempoTotal * 0.30) * 2) / 2;
   }
 
@@ -1615,7 +1782,7 @@ export default function App() {
       <div style={{ maxWidth: 1200, margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
           <span style={{ fontSize: 24 }}>🏀</span>
-          <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".12em", color: "#d97706", fontFamily: "'JetBrains Mono',mono" }}>MARCH MADNESS 2026 • v4.0</span>
+          <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".12em", color: "#d97706", fontFamily: "'JetBrains Mono',mono" }}>MARCH MADNESS 2026 • v4.1</span>
         </div>
         <h1 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-.03em", margin: "0 0 4px", lineHeight: 1.1, background: "linear-gradient(135deg,#fff,#8888a8)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>NCAA Tournament Betting Model</h1>
         <p style={{ fontSize: 12, color: "#666", margin: "0 0 8px", maxWidth: 600, lineHeight: 1.5 }}>Multi-source predictive engine with live-editable DraftKings spreads. Update any line and the model recalculates value instantly.</p>
@@ -1708,7 +1875,7 @@ export default function App() {
       </div>
       {/* Methodology */}
       <div style={{ padding: "9px 12px", background: "var(--sf)", borderRadius: 7, border: "1px solid var(--bd)", marginBottom: 14, fontSize: 10, color: "#666", lineHeight: 1.5 }}>
-        <span style={{ fontWeight: 700, color: "#aaa" }}>Model v4.0:</span> Ridge + <span style={{ color: "#d97706" }}>Monte Carlo (10K sims)</span> for win/cover/O-U probabilities. <span style={{ color: "#22c55e" }}>Ensemble consensus</span> cross-references Model + KenPom + BPI + MC simulations. <span style={{ color: "#f59e0b" }}>Line movement tracking</span> for sharp money signals. Edge-based confidence recalibrated from 2024-2025 backtest. Upset alerts backed by ESPN deep features. <span style={{ color: "#d97706" }}>DraftKings spreads are editable</span> — click ✏️ to update.
+        <span style={{ fontWeight: 700, color: "#aaa" }}>Model v4.1:</span> Ridge spread (30 features) + <span style={{ color: "#d97706" }}>Kaggle O/U model (19 features, 1369 tourney games, 67.7% backtest)</span> + Monte Carlo (10K sims). <span style={{ color: "#22c55e" }}>Ensemble consensus</span> cross-references Model + KenPom + BPI + MC. <span style={{ color: "#f59e0b" }}>Line movement tracking</span> for sharp money. <span style={{ color: "#d97706" }}>DraftKings spreads are editable</span> — click ✏️ to update.
       </div>
 
       {/* Line Editor Panel — shown when editing */}
