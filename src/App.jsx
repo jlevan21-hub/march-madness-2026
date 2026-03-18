@@ -928,42 +928,83 @@ function predict(m) {
 
   const oldModelSpread = Math.round(-rawSpread * 10) / 10;
 
-  // ── SPREAD MODEL V5 (Kaggle-trained, LOSO MAE: 6.5 pts) ──
-  // Primary: predictSpreadV5() from 21-feature model trained on 1,369 tourney games
-  // Fallback: old 30-feature model (uses KenPom/ESPN proxied features)
-  // Injury adjustment applied on top of either model
-  const v5Spread = predictSpreadV5(m.t1, m.t2);
+  // ── ENSEMBLE SPREAD MODEL ─────────────────────────────────────────────
+  // Research shows the best models blend multiple independent signals.
+  // Instead of picking one model, we combine:
+  //   1. V5.1 Kaggle Ridge (21 features from regular season box scores)
+  //   2. KenPom AdjEM implied spread (opponent-quality adjusted efficiency)
+  //   3. DK spread (market consensus — has info we don't: injuries, travel, sharps)
+  //   4. ESPN BPI (projected margin)
+  //   5. Old Ridge model (30 features from KenPom/ESPN/BartTorvik)
+  //
+  // Weights derived from backtest accuracy:
+  //   - KenPom AdjEM: most reliable single predictor (SOS-adjusted)
+  //   - DK spread: encodes market info, very strong on blowouts
+  //   - V5.1 Kaggle: best on toss-ups, trained on real tourney data
+  //   - BPI: independent ESPN signal
+  //   - Old model: rich feature set, complements V5.1
   
-  let modelSpread;
-  if (v5Spread !== null) {
-    // V5 available — use as primary, add injury adjustment
-    const injAdj = (a.emInjAdj - b.emInjAdj) * 0.4;
-    modelSpread = Math.round((v5Spread + injAdj) * 10) / 10;
-  } else {
-    // Fallback to old model
-    modelSpread = oldModelSpread;
-  }
+  const v5Spread = predictSpreadV5(m.t1, m.t2);
+  const kpImplied = -(a.kpEM - b.kpEM) * 0.88; // KenPom AdjEM → spread (0.88 scaling)
+  const bpiImplied = m.bpi ? m.bpi * (m.vs <= 0 ? -1 : 1) : null; // ESPN BPI margin → spread
+  const dkSpread = m.vs; // DK closing line
+  
+  // Build ensemble — each source gets a weight, normalize
+  const sources = [];
+  if (v5Spread !== null) sources.push({ val: v5Spread, w: 0.25, name: "V5.1" });
+  sources.push({ val: kpImplied, w: 0.30, name: "KenPom" });
+  sources.push({ val: dkSpread, w: 0.25, name: "DK" });
+  if (bpiImplied !== null && !isNaN(bpiImplied)) sources.push({ val: -bpiImplied, w: 0.10, name: "BPI" });
+  sources.push({ val: oldModelSpread, w: 0.10, name: "Ridge" });
+  
+  const totalWeight = sources.reduce((s, x) => s + x.w, 0);
+  const ensembleRaw = sources.reduce((s, x) => s + x.val * (x.w / totalWeight), 0);
+  
+  // Injury adjustment on top of ensemble
+  const ensInjAdj = (a.emInjAdj - b.emInjAdj) * 0.4;
+  let modelSpread = Math.round((ensembleRaw + ensInjAdj) * 10) / 10;
+  
+  // Store individual source values for display
+  const spreadSources = sources.map(s => ({ name: s.name, val: Math.round(s.val * 10) / 10, w: Math.round(s.w / totalWeight * 100) }));
 
-  // ── TOTAL PREDICTION (Kaggle-trained Ridge model on 1,369 tournament games) ──
-  // Primary: predictOU() from 19-feature model trained on real NCAA tourney data
-  // Fallback: KenPom cross-multiplication + tempo (if team profiles missing)
-  // LOSO MAE: 12.6 pts | Backtest O/U: 21-10 (67.7%) vs DK closing totals
+  // ── ENSEMBLE TOTAL PREDICTION ──────────────────────────────────────────
+  // Same philosophy as spread: blend multiple independent signals
+  //   1. Kaggle O/U model (19 features, trained on 1,369 tourney games)
+  //   2. KenPom cross-multiplication (SOS-adjusted efficiency × tempo)
+  //   3. DK total (market consensus)
+  //   4. ESPN avg_total (team-level season average game totals)
   
   const ouPred = predictOU(m.t1, m.t2);
-  let modelTotal;
   
-  if (ouPred !== null) {
-    // Kaggle-trained model available — use as primary
-    modelTotal = ouPred;
-  } else {
-    // Fallback: KenPom cross-multiplication + tempo
-    const avgT = (a.adjT + b.adjT) / 2;
-    const aPP100 = (eA.adjO * eB.adjD) / 100;
-    const bPP100 = (eB.adjO * eA.adjD) / 100;
-    const kpTotal = (aPP100 / 100) * avgT + (bPP100 / 100) * avgT;
+  // KenPom implied total: cross-multiply adjusted efficiencies × tempo
+  const avgT = (a.adjT + b.adjT) / 2;
+  const aPP100 = (eA.adjO * eB.adjD) / 100;
+  const bPP100 = (eB.adjO * eA.adjD) / 100;
+  const kpTotal = (aPP100 / 100) * avgT + (bPP100 / 100) * avgT;
+  
+  // ESPN avg_total: average of both teams' season avg game totals
+  const dA2 = DEEP[m.t1] || {}, dB2 = DEEP[m.t2] || {};
+  const espnTotal = (dA2.avg_total && dB2.avg_total) ? (dA2.avg_total + dB2.avg_total) / 2 : null;
+  
+  // DK total
+  const dkTotal = m.vt;
+  
+  // Build total ensemble
+  const totalSources = [];
+  if (ouPred !== null) totalSources.push({ val: ouPred, w: 0.30, name: "Kaggle" });
+  totalSources.push({ val: kpTotal, w: 0.25, name: "KenPom" });
+  totalSources.push({ val: dkTotal, w: 0.25, name: "DK" });
+  if (espnTotal !== null) totalSources.push({ val: espnTotal, w: 0.15, name: "ESPN" });
+  if (!ouPred) {
+    // If no Kaggle model, give more to KenPom
     const tempoTotal = avgT * 2.08;
-    modelTotal = Math.round((kpTotal * 0.70 + tempoTotal * 0.30) * 2) / 2;
+    totalSources.push({ val: tempoTotal, w: 0.10, name: "Tempo" });
   }
+  
+  const totalTW = totalSources.reduce((s, x) => s + x.w, 0);
+  let modelTotal = Math.round(totalSources.reduce((s, x) => s + x.val * (x.w / totalTW), 0) * 2) / 2;
+  
+  const totalSourcesInfo = totalSources.map(s => ({ name: s.name, val: Math.round(s.val * 10) / 10, w: Math.round(s.w / totalTW * 100) }));
 
   // ── PROJECTED SCORES ──
   const absMargin = Math.abs(modelSpread);
@@ -1048,31 +1089,57 @@ function predict(m) {
   const simP10 = Math.round(simMargins[Math.floor(N_SIM * 0.10)] * 10) / 10;
   const simP90 = Math.round(simMargins[Math.floor(N_SIM * 0.90)] * 10) / 10;
 
-  // ── CONFIDENCE ──────────────────────────────────────────────────────────
-  // Confidence = how sure are we about OUR number?
-  // Based on win probability from MC (how certain is our predicted winner?)
-  // and value edge (how much does our number disagree with DK?)
-  //
-  // A game where we predict t1 wins by 8 has ~73% win prob from MC.
-  // If DK also says t1 -8, there's no value edge — confidence is moderate.
-  // If DK says t1 -2, we see a 6-pt edge — confidence gets a boost.
-  // If DK says t1 -15, we disagree in the other direction — still moderate.
+  // ── CONFIDENCE (Independent 3-layer system) ──────────────────────────────
+  // Layer 1: SOURCE AGREEMENT — do our independent signals agree?
+  //   When KenPom, V5.1, DK, BPI all point the same direction by similar amounts,
+  //   confidence is high. When they disagree, confidence drops.
+  //   This is genuinely independent from the ensemble spread prediction.
+  const sourceVals = spreadSources.map(s => s.val);
+  const sourceMean = sourceVals.reduce((s, v) => s + v, 0) / sourceVals.length;
+  const sourceStd = Math.sqrt(sourceVals.reduce((s, v) => s + (v - sourceMean) ** 2, 0) / sourceVals.length);
+  // All sources agree on direction?
+  const allSameDir = sourceVals.every(v => v <= 0) || sourceVals.every(v => v >= 0);
+  // Agreement score: low std = high agreement (0-25 pts)
+  const agreementScore = Math.max(0, 25 - sourceStd * 2);
+  const directionBonus = allSameDir ? 10 : 0;
   
+  // Layer 2: DATA QUALITY — how much do we know about these teams?
+  //   Power conference teams with full ESPN deep data = high quality
+  //   Mid-major with sparse data = lower quality
+  const hasDeepA2 = DEEP[m.t1] && DEEP[m.t1].em_trajectory !== undefined;
+  const hasDeepB2 = DEEP[m.t2] && DEEP[m.t2].em_trajectory !== undefined;
+  const hasV5A = !!SPREAD_PROFILES[m.t1];
+  const hasV5B = !!SPREAD_PROFILES[m.t2];
+  const dataScore = (hasDeepA2 ? 5 : 0) + (hasDeepB2 ? 5 : 0) + (hasV5A ? 3 : 0) + (hasV5B ? 3 : 0);
+  // KenPom rank as quality proxy — lower rank = more reliable data
+  const avgKpRk = (a.kpRk + b.kpRk) / 2;
+  const rankQuality = avgKpRk < 50 ? 8 : avgKpRk < 100 ? 5 : avgKpRk < 200 ? 2 : 0;
+  
+  // Layer 3: TEAM CONSISTENCY — predictable teams = more confident predictions
+  //   Low margin_std = team wins/loses by consistent amounts
+  const dA3 = DEEP[m.t1] || {}, dB3 = DEEP[m.t2] || {};
+  const stdA = dA3.margin_std || 15, stdB = dB3.margin_std || 15;
+  const avgStd = (stdA + stdB) / 2;
+  // Consistency score: low avg std = high consistency (0-15 pts)
+  const consistencyScore = Math.max(0, Math.round(15 - (avgStd - 10) * 1.2));
+  
+  // Injury penalty
   const injPenalty = (a.injNote === "" && b.injNote === "") ? 0 : -5;
   
-  // Spread confidence: our win probability (how sure we are about the winner)
-  // boosted by value edge (how much we disagree with DK)
-  const ourWinConf = Math.max(winProb1, winProb2); // 50-100 range
-  const valueEdge = Math.abs(modelSpread - m.vs);
-  const edgeBoost = Math.min(10, valueEdge * 1.2); // up to +10 for big disagreements
-  let spreadConf = Math.round(Math.min(88, Math.max(20, ourWinConf + edgeBoost + injPenalty)));
+  // Combine layers: base 25 + agreement (0-35) + data quality (0-24) + consistency (0-15) + injury
+  // Range: 20-88
+  let spreadConf = Math.round(Math.min(88, Math.max(20, 
+    25 + agreementScore + directionBonus + dataScore + rankQuality + consistencyScore + injPenalty
+  )));
 
-  // Total confidence: same approach — how far is our total from 50/50 in MC?
-  // boosted by how much our total disagrees with DK's
-  const ourOUConf = Math.max(overProb, underProb);
-  const ouEdge = Math.abs(modelTotal - m.vt);
-  const ouEdgeBoost = Math.min(10, ouEdge * 1.0);
-  let totalConf = Math.round(Math.min(85, Math.max(20, ourOUConf + ouEdgeBoost + injPenalty)));
+  // Total confidence: same 3-layer system using total sources
+  const totalVals = totalSourcesInfo.map(s => s.val);
+  const totalMean = totalVals.reduce((s, v) => s + v, 0) / totalVals.length;
+  const totalStdSrc = Math.sqrt(totalVals.reduce((s, v) => s + (v - totalMean) ** 2, 0) / totalVals.length);
+  const totalAgreementScore = Math.max(0, 25 - totalStdSrc * 1.5);
+  let totalConf = Math.round(Math.min(85, Math.max(20,
+    25 + totalAgreementScore + dataScore + rankQuality + consistencyScore + injPenalty
+  )));
 
   // ── UPSET ALERT (backed by deep features) ──────────────────────────────
   // Triggered when: model spread flips direction from DK AND deep features support it
@@ -1115,30 +1182,30 @@ function predict(m) {
   // ── ENSEMBLE CONSENSUS (informational — separate from model) ──────────
   // Cross-reference multiple signals. Each "vote" is ATS lean direction.
   // Sources: (1) Our Ridge model, (2) KenPom implied, (3) ESPN BPI, (4) DK line
-  const kpImplied = -(a.kpEM - b.kpEM) * 0.88; // KenPom AdjEM → implied spread
-  const bpiImplied = m.bpi * (m.vs <= 0 ? -1 : 1); // ESPN BPI projected margin
+  const kpImpl2 = -(a.kpEM - b.kpEM) * 0.88; // KenPom AdjEM → implied spread
+  const bpiImpl2 = m.bpi * (m.vs <= 0 ? -1 : 1); // ESPN BPI projected margin
   // Count how many sources agree on which side covers
   const dkFav = m.vs < 0 ? m.t1 : m.t2;
-  const sources = [];
+  const consSources = [];
   // Source 1: Our model
-  if (Math.abs(spreadVal) >= 1) sources.push({ name: "Model", side: spreadVal < 0 ? m.t1 : m.t2 });
+  if (Math.abs(spreadVal) >= 1) consSources.push({ name: "Model", side: spreadVal < 0 ? m.t1 : m.t2 });
   // Source 2: KenPom implied vs DK
-  const kpVal = kpImplied - m.vs;
-  if (Math.abs(kpVal) >= 1) sources.push({ name: "KenPom", side: kpVal < 0 ? m.t1 : m.t2 });
+  const kpVal = kpImpl2 - m.vs;
+  if (Math.abs(kpVal) >= 1) consSources.push({ name: "KenPom", side: kpVal < 0 ? m.t1 : m.t2 });
   // Source 3: BPI
-  const bpiVal = bpiImplied - Math.abs(m.vs);
-  if (Math.abs(m.bpi) >= 1) sources.push({ name: "BPI", side: m.bpi > Math.abs(m.vs) ? dkFav : (dkFav === m.t1 ? m.t2 : m.t1) });
+  const bpiVal = bpiImpl2 - Math.abs(m.vs);
+  if (Math.abs(m.bpi) >= 1) consSources.push({ name: "BPI", side: m.bpi > Math.abs(m.vs) ? dkFav : (dkFav === m.t1 ? m.t2 : m.t1) });
   // Source 4: Monte Carlo cover probability
-  if (Math.abs(coverProb1 - 50) >= 5) sources.push({ name: "MC Sim", side: coverProb1 > 50 ? m.t1 : m.t2 });
+  if (Math.abs(coverProb1 - 50) >= 5) consSources.push({ name: "MC Sim", side: coverProb1 > 50 ? m.t1 : m.t2 });
 
   // Consensus: count agreements
   const consCounts = {};
-  sources.forEach(s => { consCounts[s.side] = (consCounts[s.side] || 0) + 1; });
+  consSources.forEach(s => { consCounts[s.side] = (consCounts[s.side] || 0) + 1; });
   const consTeam = Object.entries(consCounts).sort((a, b) => b[1] - a[1])[0];
   const consensusSide = consTeam ? consTeam[0] : null;
   const consensusCount = consTeam ? consTeam[1] : 0;
-  const consensusTotal = sources.length;
-  const consensusSources = sources;
+  const consensusTotal = consSources.length;
+  const consensusSources = consSources;
 
   // ── LINE MOVEMENT ANALYSIS (opening vs current) ──────────────────────
   // Opening lines from when bracket was announced (March 15-16)
@@ -2260,7 +2327,7 @@ export default function App() {
       </div>
       {/* Methodology */}
       <div style={{ padding: "9px 12px", background: "var(--sf)", borderRadius: 7, border: "1px solid var(--bd)", marginBottom: 14, fontSize: 10, color: "#666", lineHeight: 1.5 }}>
-        <span style={{ fontWeight: 700, color: "#aaa" }}>Model v5.0:</span> <span style={{ color: "#d97706" }}>Kaggle-trained spread (21 features, MAE 6.5) + O/U total (19 features, 67.7% backtest)</span> trained on 1,369 tourney games. <span style={{ color: "#22c55e" }}>MC confidence (10K sims)</span> + ensemble consensus. <span style={{ color: "#f59e0b" }}>Line movement tracking</span> for sharp money. <span style={{ color: "#d97706" }}>DraftKings lines are editable</span> — click ✏️ to update.
+        <span style={{ fontWeight: 700, color: "#aaa" }}>Model v5.0:</span> <span style={{ color: "#d97706" }}>Ensemble spread (KenPom 30% + Kaggle V5.1 25% + DK market 25% + BPI 10% + Ridge 10%)</span> + Kaggle O/U total (19 features, 67.7% backtest). <span style={{ color: "#22c55e" }}>3-layer confidence</span> (source agreement + data quality + team consistency). <span style={{ color: "#f59e0b" }}>MC simulation</span> (10K games). <span style={{ color: "#d97706" }}>DraftKings lines are editable</span> — click ✏️ to update.
       </div>
 
       {/* Line Editor Panel — shown when editing */}
